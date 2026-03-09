@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Users, TrendingUp, GraduationCap, Gift, Eye, Download, FileText } from 'lucide-react';
 import { PesoSign } from '@/components/icons/PesoSign';
+import { formatCurrencyPHP } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
   fetchEmployeeSummaryReport,
@@ -147,7 +148,9 @@ export function ReportsPage() {
       htmlTable += `<tr style="background-color:${bgColor};">`;
       headers.forEach(h => {
         const value = row[h];
-        const displayValue = typeof value === 'number' && h.includes('salary') ? `â‚±${value.toFixed(2)}` : value;
+        const displayValue = typeof value === 'number' && h.includes('salary')
+          ? formatCurrencyPHP(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          : value;
         htmlTable += `<td style="padding:10px;">${displayValue}</td>`;
       });
       htmlTable += '</tr>';
@@ -529,7 +532,7 @@ export function ReportsPage() {
                     <CardTitle className="text-sm font-medium text-gray-600">Total Net Pay</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">â‚±{payrollReport.total_net_pay.toFixed(2)}</div>
+                    <div className="text-2xl font-bold">{formatCurrencyPHP(payrollReport.total_net_pay, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                   </CardContent>
                 </Card>
               </div>
@@ -581,10 +584,10 @@ export function ReportsPage() {
                             <TableCell>{record.first_name} {record.last_name}</TableCell>
                             <TableCell className="text-sm">{record.email}</TableCell>
                             <TableCell>{record.department_name}</TableCell>
-                            <TableCell className="text-right">â‚±{record.basic_salary.toFixed(2)}</TableCell>
-                            <TableCell className="text-right">â‚±{record.allowances.toFixed(2)}</TableCell>
-                            <TableCell className="text-right">â‚±{record.deductions.toFixed(2)}</TableCell>
-                            <TableCell className="text-right font-semibold">â‚±{record.net_pay.toFixed(2)}</TableCell>
+                            <TableCell className="text-right">{formatCurrencyPHP(record.basic_salary, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                            <TableCell className="text-right">{formatCurrencyPHP(record.allowances, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                            <TableCell className="text-right">{formatCurrencyPHP(record.deductions, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                            <TableCell className="text-right font-semibold">{formatCurrencyPHP(record.net_pay, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                             <TableCell>
                               <Badge variant={record.is_paid ? 'default' : 'secondary'}>
                                 {record.is_paid ? 'Paid' : 'Pending'}
@@ -816,7 +819,7 @@ export function ReportsPage() {
                             <TableCell className="text-sm">{benefit.email}</TableCell>
                             <TableCell>{benefit.department_name}</TableCell>
                             <TableCell>{benefit.benefit_name}</TableCell>
-                            <TableCell className="text-right">â‚±{benefit.coverage_amount.toFixed(2)}</TableCell>
+                            <TableCell className="text-right">{formatCurrencyPHP(benefit.coverage_amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                             <TableCell>
                               <Badge variant={benefit.is_active ? 'default' : 'secondary'}>
                                 {benefit.is_active ? 'Active' : 'Inactive'}
@@ -879,7 +882,7 @@ export function ReportsPage() {
                     return (
                       <div key={key} className="border-b pb-3">
                         <p className="text-xs font-semibold text-gray-600 uppercase">{key.replace(/_/g, ' ')}</p>
-                        <p className="text-sm mt-1 font-semibold">â‚±{Number(value).toFixed(2)}</p>
+                        <p className="text-sm mt-1 font-semibold">{formatCurrencyPHP(Number(value), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                       </div>
                     );
                   }
@@ -904,4 +907,7 @@ export function ReportsPage() {
     </div>
   );
 }
+
+
+
 

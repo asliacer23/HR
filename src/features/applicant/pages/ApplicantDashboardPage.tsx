@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -74,7 +74,7 @@ export function ApplicantDashboardPage() {
         .from('applicants')
         .select('id')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
       if (!applicant) {
         setIsLoading(false);
@@ -303,13 +303,13 @@ export function ApplicantDashboardPage() {
                           {app.job_postings?.positions?.departments?.name && (
                             <>
                               <span>{app.job_postings.positions.departments.name}</span>
-                              <span className="hidden sm:inline">•</span>
+                              <span className="hidden sm:inline">â€¢</span>
                             </>
                           )}
                           <span>Applied {formatDate(app.applied_at)}</span>
                           {app.interview_schedules && app.interview_schedules.length > 0 && (
                             <>
-                              <span>•</span>
+                              <span>â€¢</span>
                               <span className="text-orange-600 font-medium">
                                 Interview scheduled
                               </span>
@@ -378,3 +378,4 @@ export function ApplicantDashboardPage() {
     </div>
   );
 }
+

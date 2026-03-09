@@ -151,8 +151,7 @@ function HRAdminDashboard() {
       // Fetch training programs
       const { count: trainingCount } = await supabase
         .from('training_programs')
-        .select('*', { count: 'exact', head: true })
-        .eq('is_active', true);
+        .select('*', { count: 'exact', head: true });
 
       setStats({
         activeEmployees: employeeCount || 0,
@@ -358,8 +357,7 @@ function ApplicantDashboard() {
       // Fetch active job postings
       const { count: jobCount } = await supabase
         .from('job_postings')
-        .select('*', { count: 'exact', head: true })
-        .eq('is_active', true);
+        .select('*', { count: 'exact', head: true });
 
       // Get applicant ID and their applications
       const { data: applicantData } = await supabase
@@ -455,4 +453,5 @@ export function DashboardPage() {
       return <ApplicantDashboard />;
   }
 }
+
 

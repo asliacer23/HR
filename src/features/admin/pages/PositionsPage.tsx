@@ -1,3 +1,4 @@
+﻿import { formatCurrencyPHP } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -44,14 +45,6 @@ export function PositionsPage() {
   const filteredPositions = positions.filter(pos =>
     pos.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
-
-  const formatSalary = (amount: number | null) => {
-    if (!amount) return '-';
-    return new Intl.NumberFormat('en-PH', {
-      style: 'currency',
-      currency: 'PHP',
-    }).format(amount);
-  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -108,7 +101,7 @@ export function PositionsPage() {
                   <td className="font-medium">{pos.title}</td>
                   <td>{pos.departments?.name || '-'}</td>
                   <td>
-                    {formatSalary(pos.min_salary)} - {formatSalary(pos.max_salary)}
+                    {pos.min_salary !== null ? formatCurrencyPHP(pos.min_salary, { maximumFractionDigits: 0 }) : '-'} - {pos.max_salary !== null ? formatCurrencyPHP(pos.max_salary, { maximumFractionDigits: 0 }) : '-'}
                   </td>
                   <td>
                     <Badge className={pos.is_active ? 'status-active' : 'bg-muted'}>
@@ -134,3 +127,4 @@ export function PositionsPage() {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -60,7 +60,7 @@ export function ApplicantDocumentsPage({ applicantId }: DocumentsPageProps) {
       .from('applicants')
       .select('id')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
     if (!applicant) return;
 
@@ -113,17 +113,17 @@ export function ApplicantDocumentsPage({ applicantId }: DocumentsPageProps) {
   const getDocumentIcon = (type: string) => {
     switch (type) {
       case 'resume':
-        return '📄';
+        return 'ðŸ“„';
       case 'certificate':
-        return '🎓';
+        return 'ðŸŽ“';
       case 'cover_letter':
-        return '📝';
+        return 'ðŸ“';
       case 'portfolio':
-        return '🎨';
+        return 'ðŸŽ¨';
       case 'license':
-        return '📋';
+        return 'ðŸ“‹';
       default:
-        return '📎';
+        return 'ðŸ“Ž';
     }
   };
 
@@ -381,3 +381,4 @@ export function ApplicantDocumentsPage({ applicantId }: DocumentsPageProps) {
     </div>
   );
 }
+

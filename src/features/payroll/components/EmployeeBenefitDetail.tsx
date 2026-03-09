@@ -1,3 +1,4 @@
+﻿import { formatCurrencyPHP } from '@/lib/utils';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -136,7 +137,7 @@ export function EmployeeBenefitDetail({
               <div>
                 <h3 className="text-sm font-semibold mb-1">Coverage Amount</h3>
                 <p className="text-sm text-gray-600">
-                  ₱{benefit.coverage_amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {formatCurrencyPHP(benefit.coverage_amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
               </div>
             )}
@@ -219,3 +220,5 @@ export function EmployeeBenefitDetail({
     </Dialog>
   );
 }
+
+

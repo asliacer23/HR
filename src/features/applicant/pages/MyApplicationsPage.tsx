@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { Badge } from '@/components/ui/badge';
@@ -79,7 +79,7 @@ export function MyApplicationsPage() {
       .from('applicants')
       .select('id')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
     if (!applicant) {
       setIsLoading(false);
@@ -133,7 +133,7 @@ export function MyApplicationsPage() {
       .from('applicants')
       .select('id')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
     if (!applicant) return;
 
@@ -186,17 +186,17 @@ export function MyApplicationsPage() {
   const getDocumentIcon = (type: string) => {
     switch (type) {
       case 'resume':
-        return '📄';
+        return 'ðŸ“„';
       case 'certificate':
-        return '🎓';
+        return 'ðŸŽ“';
       case 'cover_letter':
-        return '📝';
+        return 'ðŸ“';
       case 'portfolio':
-        return '🎨';
+        return 'ðŸŽ¨';
       case 'license':
-        return '✅';
+        return 'âœ…';
       default:
-        return '📦';
+        return 'ðŸ“¦';
     }
   };
 
@@ -274,7 +274,7 @@ export function MyApplicationsPage() {
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {new Date(app.interview_schedules[0].scheduled_date).toLocaleString()}
-                        {app.interview_schedules[0].location && ` • ${app.interview_schedules[0].location}`}
+                        {app.interview_schedules[0].location && ` â€¢ ${app.interview_schedules[0].location}`}
                       </p>
                     </div>
                   )}
@@ -396,7 +396,7 @@ export function MyApplicationsPage() {
                               <div className="flex-1 min-w-0">
                                 <p className="font-medium text-sm truncate">{doc.document_name}</p>
                                 <p className="text-xs text-muted-foreground">
-                                  {doc.document_type.replace('_', ' ')} • {new Date(doc.uploaded_at).toLocaleDateString()}
+                                  {doc.document_type.replace('_', ' ')} â€¢ {new Date(doc.uploaded_at).toLocaleDateString()}
                                 </p>
                               </div>
                             </div>
@@ -538,3 +538,4 @@ export function MyApplicationsPage() {
     </div>
   );
 }
+

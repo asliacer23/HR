@@ -1,3 +1,4 @@
+﻿import { formatCurrencyPHP } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
@@ -196,13 +197,6 @@ export function ContractsPage() {
     setIsDeleting(false);
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-PH', {
-      style: 'currency',
-      currency: 'PHP',
-    }).format(amount);
-  };
-
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="page-header">
@@ -257,7 +251,7 @@ export function ContractsPage() {
                   <td>{CONTRACT_TYPE_LABELS[contract.contract_type]}</td>
                   <td>{new Date(contract.start_date).toLocaleDateString()}</td>
                   <td>{contract.end_date ? new Date(contract.end_date).toLocaleDateString() : 'Ongoing'}</td>
-                  <td>{formatCurrency(contract.salary)}</td>
+                  <td>{formatCurrencyPHP(contract.salary, { maximumFractionDigits: 0 })}</td>
                   <td>
                     <Badge className={contract.is_current ? 'status-active' : 'bg-muted'}>
                       {contract.is_current ? 'Current' : 'Expired'}
@@ -333,7 +327,7 @@ export function ContractsPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm text-muted-foreground">Monthly Salary</p>
-                    <p className="font-medium">{formatCurrency(selectedContract.salary)}</p>
+                    <p className="font-medium">{formatCurrencyPHP(selectedContract.salary, { maximumFractionDigits: 0 })}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Status</p>
@@ -496,3 +490,5 @@ export function ContractsPage() {
     </div>
   );
 }
+
+

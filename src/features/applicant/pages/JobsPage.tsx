@@ -1,4 +1,5 @@
-﻿import { useState, useEffect } from 'react';
+﻿import { formatCurrencyPHP } from '@/lib/utils';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -80,7 +81,7 @@ export function JobsPage() {
       .from('applicants')
       .select('*')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
     if (!applicantData) {
       const { data: newApplicant, error } = await supabase
@@ -168,15 +169,7 @@ export function JobsPage() {
     setResumeUrl(url);
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-PH', {
-      style: 'currency',
-      currency: 'PHP',
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  const filteredJobs = jobs.filter(job =>
+    const filteredJobs = jobs.filter(job =>
     job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     job.description.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -236,7 +229,7 @@ export function JobsPage() {
                     {(job.salary_range_min || job.salary_range_max) && (
                       <div className="flex items-center gap-1 text-muted-foreground">
                         <PesoSign className="h-4 w-4" />
-                        {formatCurrency(job.salary_range_min || 0)} - {formatCurrency(job.salary_range_max || 0)}
+                        {formatCurrencyPHP(job.salary_range_min || 0)} - {formatCurrencyPHP(job.salary_range_max || 0)}
                       </div>
                     )}
                     {job.deadline && (
@@ -367,6 +360,8 @@ export function JobsPage() {
     </div>
   );
 }
+
+
 
 
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -40,7 +40,7 @@ export function ApplicantProfilePage() {
       .from('profiles')
       .select('*')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
     if (data) {
       setFullProfile(data);
     }
@@ -53,7 +53,7 @@ export function ApplicantProfilePage() {
       .from('applicants')
       .select('*')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
     if (!data) {
       const { data: newApplicant } = await supabase

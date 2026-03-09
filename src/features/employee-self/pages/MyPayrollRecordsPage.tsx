@@ -1,4 +1,5 @@
-﻿import { useState, useEffect } from 'react';
+﻿import { formatCurrencyPHP } from '@/lib/utils';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { Badge } from '@/components/ui/badge';
@@ -35,11 +36,6 @@ interface PayrollRecord {
     is_processed: boolean;
   } | null;
 }
-
-// Helper function to format currency in Philippine Peso
-const formatPeso = (amount: number) => {
-  return `â‚±${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-};
 
 export function MyPayrollRecordsPage() {
   const { user } = useAuth();
@@ -149,7 +145,7 @@ export function MyPayrollRecordsPage() {
                 Total Net Pay
               </p>
               <p className="text-3xl font-bold text-green-600">
-                {formatPeso(totalNetPay)}
+                {formatCurrencyPHP(totalNetPay)}
               </p>
               <p className="text-xs text-muted-foreground mt-2">{records.length} records</p>
             </div>
@@ -159,7 +155,7 @@ export function MyPayrollRecordsPage() {
                 Total Earned
               </p>
               <p className="text-3xl font-bold text-blue-600">
-                {formatPeso(totalEarned)}
+                {formatCurrencyPHP(totalEarned)}
               </p>
               <p className="text-xs text-muted-foreground mt-2">Salary + Allowances</p>
             </div>
@@ -256,16 +252,16 @@ function PayrollTableRow({ record }: PayrollTableRowProps) {
             {period ? new Date(period.pay_date).toLocaleDateString() : 'N/A'}
           </td>
           <td className="text-right font-medium">
-            {formatPeso(record.basic_salary)}
+            {formatCurrencyPHP(record.basic_salary)}
           </td>
           <td className="text-right text-green-600 font-medium">
-            {formatPeso(record.allowances)}
+            {formatCurrencyPHP(record.allowances)}
           </td>
           <td className="text-right text-red-600 font-medium">
-            {formatPeso(record.deductions)}
+            {formatCurrencyPHP(record.deductions)}
           </td>
           <td className="text-right font-bold text-lg">
-            {formatPeso(record.net_pay)}
+            {formatCurrencyPHP(record.net_pay)}
           </td>
           <td>
             {record.is_paid ? (
@@ -332,13 +328,13 @@ function PayrollTableRow({ record }: PayrollTableRowProps) {
               <div className="flex justify-between p-2 bg-muted/30 rounded">
                 <span>Basic Salary</span>
                 <span className="font-medium">
-                  {formatPeso(record.basic_salary)}
+                  {formatCurrencyPHP(record.basic_salary)}
                 </span>
               </div>
               <div className="flex justify-between p-2 bg-green-50 rounded border border-green-200">
                 <span className="text-green-700">Allowances</span>
                 <span className="font-medium text-green-700">
-                  +{formatPeso(record.allowances)}
+                  +{formatCurrencyPHP(record.allowances)}
                 </span>
               </div>
             </div>
@@ -346,7 +342,7 @@ function PayrollTableRow({ record }: PayrollTableRowProps) {
               <div className="flex justify-between p-2 font-semibold">
                 <span>Gross Pay</span>
                 <span>
-                  {formatPeso(record.basic_salary + record.allowances)}
+                  {formatCurrencyPHP(record.basic_salary + record.allowances)}
                 </span>
               </div>
             </div>
@@ -360,7 +356,7 @@ function PayrollTableRow({ record }: PayrollTableRowProps) {
             <div className="flex justify-between p-2 bg-red-50 rounded border border-red-200">
               <span className="text-red-700">Total Deductions</span>
               <span className="font-medium text-red-700">
-                -{formatPeso(record.deductions)}
+                -{formatCurrencyPHP(record.deductions)}
               </span>
             </div>
           </div>
@@ -372,7 +368,7 @@ function PayrollTableRow({ record }: PayrollTableRowProps) {
             <div className="flex justify-between items-center">
               <span className="text-lg font-semibold text-blue-900">Net Pay (Take Home)</span>
               <span className="text-3xl font-bold text-blue-600">
-                {formatPeso(record.net_pay)}
+                {formatCurrencyPHP(record.net_pay)}
               </span>
             </div>
           </div>
@@ -390,4 +386,7 @@ function PayrollTableRow({ record }: PayrollTableRowProps) {
     </Dialog>
   );
 }
+
+
+
 

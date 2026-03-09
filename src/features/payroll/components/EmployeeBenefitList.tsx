@@ -1,3 +1,4 @@
+﻿import { formatCurrencyPHP } from '@/lib/utils';
 import { MoreHorizontal, Edit, Trash2, Eye } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -118,7 +119,7 @@ export function EmployeeBenefitList({
               </TableCell>
               <TableCell>
                 {benefit.coverage_amount !== null
-                  ? `₱${benefit.coverage_amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  ? `${formatCurrencyPHP(benefit.coverage_amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                   : '-'}
               </TableCell>
               <TableCell>
@@ -163,3 +164,5 @@ export function EmployeeBenefitList({
     </div>
   );
 }
+
+

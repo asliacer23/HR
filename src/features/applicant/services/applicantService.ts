@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+﻿import { supabase } from '@/integrations/supabase/client';
 
 // ============================================
 // APPLICANT DOCUMENT TYPES
@@ -33,10 +33,14 @@ export async function fetchApplicantWithDocuments(userId: string) {
       .from('applicants')
       .select('*')
       .eq('user_id', userId)
-      .single();
+      .maybeSingle();
 
-    if (appError || !applicant) {
-      return { data: null, error: appError?.message || 'Applicant not found' };
+    if (appError) {
+      return { data: null, error: appError.message };
+    }
+
+    if (!applicant) {
+      return { data: null, error: null };
     }
 
     // Get all documents for applicant
@@ -155,3 +159,5 @@ export async function updateDocumentName(documentId: string, newName: string) {
     return { data: null, error: String(error) };
   }
 }
+
+

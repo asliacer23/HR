@@ -1,4 +1,5 @@
-﻿import { useState } from 'react';
+﻿import { formatCurrencyPHP } from '@/lib/utils';
+import { useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -63,7 +64,7 @@ ${data.requirements || 'Not specified'}
 Responsibilities:
 ${data.responsibilities || 'Not specified'}
 
-Salary Range: ${data.salary_range_min ? '₱' + data.salary_range_min.toLocaleString() : 'Not specified'} - ${data.salary_range_max ? '₱' + data.salary_range_max.toLocaleString() : 'Not specified'}
+Salary Range: ${data.salary_range_min ? formatCurrencyPHP(data.salary_range_min, { maximumFractionDigits: 0 }) : 'Not specified'} - ${data.salary_range_max ? formatCurrencyPHP(data.salary_range_max, { maximumFractionDigits: 0 }) : 'Not specified'}
 Deadline: ${data.deadline ? new Date(data.deadline).toLocaleDateString() : 'Not specified'}
 Status: ${data.is_active ? 'Open' : 'Closed'}
     `.trim();
@@ -148,7 +149,7 @@ Status: ${data.is_active ? 'Open' : 'Closed'}
                 <p className="text-sm text-gray-600 font-medium mb-1">Salary Range</p>
                 <p className="font-semibold text-lg text-gray-900">
                   {data.salary_range_min && data.salary_range_max
-                    ? `₱${data.salary_range_min.toLocaleString()} - ₱${data.salary_range_max.toLocaleString()}`
+                    ? `${formatCurrencyPHP(data.salary_range_min, { maximumFractionDigits: 0 })} - ${formatCurrencyPHP(data.salary_range_max, { maximumFractionDigits: 0 })}`
                     : 'Not specified'}
                 </p>
               </div>
@@ -224,4 +225,5 @@ Status: ${data.is_active ? 'Open' : 'Closed'}
     </>
   );
 }
+
 

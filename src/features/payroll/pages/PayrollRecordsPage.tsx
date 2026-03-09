@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Plus, Search, Edit, Trash2, MoreHorizontal, CheckCircle, Eye } from 'lucide-react';
+import { formatCurrencyPHP } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
   DropdownMenu,
@@ -332,7 +333,7 @@ export function PayrollRecordsPage() {
             <CardTitle className="text-sm font-medium text-gray-600">Total Amount</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">â‚±{stats.totalAmount.toFixed(2)}</div>
+            <div className="text-2xl font-bold">{formatCurrencyPHP(stats.totalAmount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
           </CardContent>
         </Card>
       </div>
@@ -406,15 +407,15 @@ export function PayrollRecordsPage() {
                       ? `${new Date(record.period_start).toLocaleDateString()} - ${new Date(record.period_end).toLocaleDateString()}`
                       : 'N/A'}
                   </TableCell>
-                  <TableCell className="text-right">â‚±{record.basic_salary.toFixed(2)}</TableCell>
+                  <TableCell className="text-right">{formatCurrencyPHP(record.basic_salary, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                   <TableCell className="text-right text-green-600">
-                    +â‚±{record.allowances.toFixed(2)}
+                    +{formatCurrencyPHP(record.allowances, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </TableCell>
                   <TableCell className="text-right text-red-600">
-                    -â‚±{record.deductions.toFixed(2)}
+                    -{formatCurrencyPHP(record.deductions, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </TableCell>
                   <TableCell className="text-right font-semibold">
-                    â‚±{record.net_pay.toFixed(2)}
+                    {formatCurrencyPHP(record.net_pay, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </TableCell>
                   <TableCell>
                     {record.is_paid ? (
@@ -551,7 +552,7 @@ export function PayrollRecordsPage() {
               <div className="bg-gray-100 p-3 rounded">
                 <div className="text-sm text-gray-600">Net Pay</div>
                 <div className="text-2xl font-bold">
-                  â‚±{(formData.basic_salary + formData.allowances - formData.deductions).toFixed(2)}
+                  {formatCurrencyPHP(formData.basic_salary + formData.allowances - formData.deductions, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
               </div>
 
@@ -605,19 +606,19 @@ export function PayrollRecordsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm text-gray-600">Basic Salary</label>
-                  <p className="text-lg font-semibold">â‚±{selectedRecord.basic_salary.toFixed(2)}</p>
+                  <p className="text-lg font-semibold">{formatCurrencyPHP(selectedRecord.basic_salary, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                 </div>
                 <div>
                   <label className="text-sm text-gray-600">Allowances</label>
-                  <p className="text-lg font-semibold text-green-600">+â‚±{selectedRecord.allowances.toFixed(2)}</p>
+                  <p className="text-lg font-semibold text-green-600">+{formatCurrencyPHP(selectedRecord.allowances, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                 </div>
                 <div>
                   <label className="text-sm text-gray-600">Deductions</label>
-                  <p className="text-lg font-semibold text-red-600">-â‚±{selectedRecord.deductions.toFixed(2)}</p>
+                  <p className="text-lg font-semibold text-red-600">-{formatCurrencyPHP(selectedRecord.deductions, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                 </div>
                 <div>
                   <label className="text-sm text-gray-600">Net Pay</label>
-                  <p className="text-lg font-bold">â‚±{selectedRecord.net_pay.toFixed(2)}</p>
+                  <p className="text-lg font-bold">{formatCurrencyPHP(selectedRecord.net_pay, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                 </div>
               </div>
 
@@ -683,4 +684,7 @@ export function PayrollRecordsPage() {
     </div>
   );
 }
+
+
+
 

@@ -1,4 +1,5 @@
-﻿import { useState, useEffect } from 'react';
+﻿import { formatCurrencyPHP } from '@/lib/utils';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -191,7 +192,7 @@ export function JobPostingsPage() {
                   <td>{job.deadline ? new Date(job.deadline).toLocaleDateString() : '-'}</td>
                   <td>
                     {job.salary_range_min && job.salary_range_max
-                      ? `₱${job.salary_range_min.toLocaleString()} - ₱${job.salary_range_max.toLocaleString()}`
+                      ? `${formatCurrencyPHP(job.salary_range_min, { maximumFractionDigits: 0 })} - ${formatCurrencyPHP(job.salary_range_max, { maximumFractionDigits: 0 })}`
                       : '-'}
                   </td>
                   <td>
@@ -291,4 +292,5 @@ export function JobPostingsPage() {
     </div>
   );
 }
+
 

@@ -1,3 +1,4 @@
+﻿import { formatCurrencyPHP } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/features/auth/context/AuthContext';
@@ -32,11 +33,6 @@ interface EmployeeBenefit {
   is_active: boolean;
   benefits?: BenefitInfo | null;
 }
-
-const formatPeso = (amount: number | null) => {
-  if (amount === null) return 'N/A';
-  return `₱${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-};
 
 export function MyBenefitsPage() {
   const { user } = useAuth();
@@ -242,7 +238,7 @@ function BenefitCard({ benefit, getBenefitTypeColor }: BenefitCardProps) {
             {benefit.coverage_amount && (
               <div className="pt-2 border-t">
                 <p className="text-sm text-muted-foreground">Coverage Amount</p>
-                <p className="text-lg font-semibold">{formatPeso(benefit.coverage_amount)}</p>
+                <p className="text-lg font-semibold">{benefit.coverage_amount !== null ? formatCurrencyPHP(benefit.coverage_amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : 'N/A'}</p>
               </div>
             )}
           </div>
@@ -308,7 +304,7 @@ function BenefitCard({ benefit, getBenefitTypeColor }: BenefitCardProps) {
                   <h4 className="font-semibold text-sm text-muted-foreground uppercase mb-2">
                     Coverage Amount
                   </h4>
-                  <p className="text-2xl font-bold text-blue-600">{formatPeso(benefit.coverage_amount)}</p>
+                  <p className="text-2xl font-bold text-blue-600">{benefit.coverage_amount !== null ? formatCurrencyPHP(benefit.coverage_amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : 'N/A'}</p>
                 </div>
               )}
             </div>
@@ -352,3 +348,6 @@ function BenefitCard({ benefit, getBenefitTypeColor }: BenefitCardProps) {
     </Dialog>
   );
 }
+
+
+
