@@ -1,10 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useAuth } from '@/features/auth/context/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import {
+  dispatchEmployeeProfileToConnectedDepartments,
+  dispatchEmployeeProfileToDepartment,
+  fetchIntegrationReadyEmployees,
+  type IntegrationConnectedSystem,
+  type IntegrationReadyEmployee,
+} from '@/features/integration/services/departmentIntegrationService';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Search, Eye, UserPlus, Loader2 } from 'lucide-react';
+import { Plus, Search, Eye, UserPlus, Loader2, Send } from 'lucide-react';
 import { EMPLOYMENT_STATUS_LABELS, EMPLOYEE_TYPE_LABELS, EmploymentStatus, EmployeeType, ContractType, CONTRACT_TYPE_LABELS } from '@/lib/constants';
 import {
   Dialog,
@@ -71,17 +79,57 @@ interface HiredApplicant {
   }[];
 }
 
+function getIntegrationBadgeClass(employee: IntegrationReadyEmployee | null | undefined) {
+  if (!employee) {
+    return 'bg-slate-100 text-slate-700 border-slate-200';
+  }
+
+  switch (employee.integration_status) {
+    case 'synced':
+      return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+    case 'pending_sync':
+      return 'bg-amber-100 text-amber-700 border-amber-200';
+    case 'error':
+      return 'bg-red-100 text-red-700 border-red-200';
+    case 'paused':
+      return 'bg-slate-100 text-slate-700 border-slate-200';
+    default:
+      return 'bg-sky-100 text-sky-700 border-sky-200';
+  }
+}
+
+function getIntegrationLabel(employee: IntegrationReadyEmployee | null | undefined) {
+  if (!employee) {
+    return 'Not mapped';
+  }
+
+  return employee.integration_status.replace(/_/g, ' ');
+}
+
+function formatTimestamp(value?: string | null) {
+  if (!value) {
+    return 'Not yet';
+  }
+
+  return new Date(value).toLocaleString();
+}
+
 export function EmployeesPage() {
+  const { user } = useAuth();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
   const [hiredApplicants, setHiredApplicants] = useState<HiredApplicant[]>([]);
+  const [integrationDirectory, setIntegrationDirectory] = useState<Record<string, IntegrationReadyEmployee>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isIntegrationLoading, setIsIntegrationLoading] = useState(true);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isConvertOpen, setIsConvertOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [syncingEmployeeId, setSyncingEmployeeId] = useState<string | null>(null);
+  const [syncingTargetKey, setSyncingTargetKey] = useState<string | null>(null);
   const [selectedApplicant, setSelectedApplicant] = useState<string>('');
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [editFormData, setEditFormData] = useState({
@@ -104,11 +152,72 @@ export function EmployeesPage() {
     salary: '',
   });
 
-  useEffect(() => {
-    fetchData();
+  const loadIntegrationDirectory = useCallback(async () => {
+    setIsIntegrationLoading(true);
+
+    const { data, error } = await fetchIntegrationReadyEmployees({ includeInactive: true });
+
+    if (error) {
+      toast.error(error);
+      setIntegrationDirectory({});
+      setIsIntegrationLoading(false);
+      return;
+    }
+
+    setIntegrationDirectory(
+      data.reduce<Record<string, IntegrationReadyEmployee>>((accumulator, employee) => {
+        accumulator[employee.employee_id] = employee;
+        return accumulator;
+      }, {})
+    );
+    setIsIntegrationLoading(false);
   }, []);
 
-  const fetchData = async () => {
+  const syncEmployeeEverywhere = async (
+    employeeId: string,
+    reason: 'employee_created' | 'employee_updated'
+  ) => {
+    setSyncingEmployeeId(employeeId);
+
+    const { data, error } = await dispatchEmployeeProfileToConnectedDepartments({
+      employeeId,
+      requestedBy: user?.id,
+      metadata: {
+        initiated_from: 'employees_page',
+        sync_reason: reason,
+        requested_by_email: user?.email ?? null,
+      },
+    });
+
+    setSyncingEmployeeId(null);
+    return { data, error };
+  };
+
+  const syncEmployeeToTarget = async (
+    employeeId: string,
+    system: IntegrationConnectedSystem
+  ) => {
+    const targetKey = `${employeeId}:${system.department_key}`;
+    setSyncingTargetKey(targetKey);
+
+    const { data, error } = await dispatchEmployeeProfileToDepartment({
+      employeeId,
+      targetDepartmentKey: system.department_key,
+      eventCode: system.default_event_code,
+      requestedBy: user?.id,
+      metadata: {
+        initiated_from: 'employees_page',
+        sync_reason: 'manual_target_dispatch',
+        target_department_name: system.department_name,
+        requested_by_email: user?.email ?? null,
+      },
+    });
+
+    setSyncingTargetKey(null);
+    return { data, error };
+  };
+
+  const fetchData = useCallback(async () => {
     setIsLoading(true);
 
     // Fetch employees
@@ -206,8 +315,13 @@ export function EmployeesPage() {
       setHiredApplicants([]);
     }
 
+    await loadIntegrationDirectory();
     setIsLoading(false);
-  };
+  }, [loadIntegrationDirectory]);
+
+  useEffect(() => {
+    void fetchData();
+  }, [fetchData]);
 
   const generateEmployeeNumber = () => {
     const year = new Date().getFullYear();
@@ -316,7 +430,11 @@ export function EmployeesPage() {
       .eq('applicant_id', applicant.id);
 
     if (!docsFetchError && applicantDocs && applicantDocs.length > 0) {
-      const employeeDocuments = applicantDocs.map((doc: any) => ({
+      const employeeDocuments = applicantDocs.map((doc: {
+        document_name: string;
+        document_url: string;
+        document_type: string;
+      }) => ({
         employee_id: newEmployee.id,
         document_name: doc.document_name,
         document_url: doc.document_url,
@@ -365,11 +483,26 @@ export function EmployeesPage() {
       }
     }
 
+    const syncResult = await syncEmployeeEverywhere(newEmployee.id, 'employee_created');
+
     toast.success('Applicant converted to employee successfully!');
+
+    if (syncResult.error) {
+      toast.error(`Employee created, but department sync failed: ${syncResult.error}`);
+    } else if (syncResult.data) {
+      if (syncResult.data.ok || syncResult.data.partial_success) {
+        toast.success('Department sync queued', {
+          description: `${syncResult.data.dispatched_target_count ?? 0} connected department${(syncResult.data.dispatched_target_count ?? 0) === 1 ? '' : 's'} notified.`,
+        });
+      } else if (syncResult.data.message) {
+        toast.error(syncResult.data.message);
+      }
+    }
+
     setIsConvertOpen(false);
     setSelectedApplicant('');
     resetForm();
-    fetchData();
+    await fetchData();
     setIsSubmitting(false);
   };
 
@@ -397,6 +530,58 @@ export function EmployeesPage() {
       hire_date: emp.hire_date,
     });
     setIsViewOpen(true);
+  };
+
+  const handleManualSyncEmployee = async () => {
+    if (!selectedEmployee) {
+      return;
+    }
+
+    const syncResult = await syncEmployeeEverywhere(selectedEmployee.id, 'employee_updated');
+
+    if (syncResult.error) {
+      toast.error(syncResult.error);
+      return;
+    }
+
+    if (!syncResult.data) {
+      toast.error('Employee sync did not return a response.');
+      return;
+    }
+
+    if (syncResult.data.ok || syncResult.data.partial_success) {
+      toast.success(syncResult.data.message ?? 'Employee sync queued successfully.', {
+        description: `${syncResult.data.dispatched_target_count ?? 0} connected department${(syncResult.data.dispatched_target_count ?? 0) === 1 ? '' : 's'} notified.`,
+      });
+    } else {
+      toast.error(syncResult.data.message ?? 'Failed to queue employee sync.');
+    }
+
+    await fetchData();
+  };
+
+  const handleManualTargetSync = async (system: IntegrationConnectedSystem) => {
+    if (!selectedEmployee) {
+      return;
+    }
+
+    const syncResult = await syncEmployeeToTarget(selectedEmployee.id, system);
+
+    if (syncResult.error) {
+      toast.error(syncResult.error);
+      return;
+    }
+
+    if (!syncResult.data?.ok) {
+      toast.error(syncResult.data?.message ?? `Failed to sync to ${system.department_name}.`);
+      return;
+    }
+
+    toast.success(`${system.department_name} sync queued`, {
+      description: `${syncResult.data.event_code ?? system.default_event_code} routed successfully.`,
+    });
+
+    await fetchData();
   };
 
   const handleUpdateEmployee = async () => {
@@ -437,9 +622,24 @@ export function EmployeesPage() {
         return;
       }
 
+      const syncResult = await syncEmployeeEverywhere(selectedEmployee.id, 'employee_updated');
+
       toast.success('Employee updated successfully!');
+
+      if (syncResult.error) {
+        toast.error(`Employee updated, but department sync failed: ${syncResult.error}`);
+      } else if (syncResult.data) {
+        if (syncResult.data.ok || syncResult.data.partial_success) {
+          toast.success('Department sync queued', {
+            description: `${syncResult.data.dispatched_target_count ?? 0} connected department${(syncResult.data.dispatched_target_count ?? 0) === 1 ? '' : 's'} notified.`,
+          });
+        } else if (syncResult.data.message) {
+          toast.error(syncResult.data.message);
+        }
+      }
+
       setIsViewOpen(false);
-      fetchData();
+      await fetchData();
     } catch (error) {
       toast.error('Error updating employee');
     }
@@ -465,6 +665,7 @@ export function EmployeesPage() {
   const filteredPositions = formData.department_id
     ? positions.filter(p => p.department_id === formData.department_id)
     : positions;
+  const selectedEmployeeIntegration = selectedEmployee ? integrationDirectory[selectedEmployee.id] : null;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -526,19 +727,20 @@ export function EmployeesPage() {
               <th>Department</th>
               <th>Type</th>
               <th>Status</th>
+              <th>Integration</th>
               <th className="w-24">Actions</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={7} className="text-center py-8 text-muted-foreground">
+                <td colSpan={8} className="text-center py-8 text-muted-foreground">
                   Loading employees...
                 </td>
               </tr>
             ) : filteredEmployees.length === 0 ? (
               <tr>
-                <td colSpan={7} className="text-center py-8 text-muted-foreground">
+                <td colSpan={8} className="text-center py-8 text-muted-foreground">
                   No employees found
                 </td>
               </tr>
@@ -555,6 +757,11 @@ export function EmployeesPage() {
                   <td>
                     <Badge className={getStatusColor(emp.employment_status)}>
                       {EMPLOYMENT_STATUS_LABELS[emp.employment_status]}
+                    </Badge>
+                  </td>
+                  <td>
+                    <Badge className={getIntegrationBadgeClass(integrationDirectory[emp.id])}>
+                      {getIntegrationLabel(integrationDirectory[emp.id])}
                     </Badge>
                   </td>
                   <td>
@@ -741,6 +948,98 @@ export function EmployeesPage() {
                     </Badge>
                   </div>
                 </div>
+              </div>
+
+              <div className="space-y-4 rounded-lg border border-border/60 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-semibold">Department Integration</h3>
+                      <Badge className={getIntegrationBadgeClass(selectedEmployeeIntegration)}>
+                        {isIntegrationLoading ? 'Loading...' : getIntegrationLabel(selectedEmployeeIntegration)}
+                      </Badge>
+                    </div>
+
+                    {selectedEmployeeIntegration ? (
+                      <div className="space-y-1 text-sm text-muted-foreground">
+                        <p>
+                          Connected systems: {selectedEmployeeIntegration.connected_system_count}
+                        </p>
+                        <p>
+                          Last dispatched: {formatTimestamp(selectedEmployeeIntegration.last_dispatched_at)}
+                        </p>
+                        <p>
+                          Last synced: {formatTimestamp(selectedEmployeeIntegration.last_synced_at)}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        This employee is not yet integration-ready. Department mapping or connected targets may still be missing.
+                      </p>
+                    )}
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void handleManualSyncEmployee()}
+                    disabled={
+                      !selectedEmployeeIntegration ||
+                      selectedEmployeeIntegration.connected_system_count === 0 ||
+                      syncingEmployeeId === selectedEmployee.id
+                    }
+                  >
+                    {syncingEmployeeId === selectedEmployee.id ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="mr-2 h-4 w-4" />
+                    )}
+                    Sync Connected Departments
+                  </Button>
+                </div>
+
+                {selectedEmployeeIntegration && selectedEmployeeIntegration.connected_systems.length > 0 ? (
+                  <div className="space-y-3">
+                    {selectedEmployeeIntegration.connected_systems.map((system) => {
+                      const targetKey = `${selectedEmployee.id}:${system.department_key}`;
+
+                      return (
+                        <div
+                          key={system.department_key}
+                          className="flex flex-col gap-3 rounded-lg border border-border/60 p-3 sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <div className="space-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-medium">{system.department_name}</p>
+                              {system.is_primary ? <Badge variant="outline">Primary</Badge> : null}
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              Default event: {system.default_event_code}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {system.available_routes.map((route) => route.event_code).join(', ')}
+                            </p>
+                          </div>
+
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void handleManualTargetSync(system)}
+                            disabled={syncingTargetKey === targetKey}
+                          >
+                            {syncingTargetKey === targetKey ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <Send className="mr-2 h-4 w-4" />
+                            )}
+                            Send to {system.department_name}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
               </div>
 
               {/* Edit Fields */}

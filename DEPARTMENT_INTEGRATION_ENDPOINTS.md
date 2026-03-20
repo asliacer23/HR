@@ -11,9 +11,13 @@ POST /rest/v1/rpc/<function_name>
 Primary RPC endpoints:
 
 - `get_department_integration_registry`
+- `get_department_flow_events`
 - `dispatch_department_flow`
 - `get_department_flow_status`
 - `acknowledge_department_flow`
+- `dispatch_employee_profile_to_department`
+- `dispatch_employee_profile_to_connected_departments`
+- `dispatch_department_employee_directory`
 
 Department-specific dispatch endpoints from HR:
 
@@ -83,6 +87,33 @@ Example payload for `acknowledge_department_flow`:
 }
 ```
 
+Example payload for `dispatch_employee_profile_to_connected_departments`:
+
+```json
+{
+  "_employee_id": "f50e8400-e29b-41d4-a716-446655440008",
+  "_only_primary": false,
+  "_metadata": {
+    "initiated_from": "employees_page",
+    "sync_reason": "employee_updated"
+  }
+}
+```
+
+Example payload for `dispatch_department_employee_directory`:
+
+```json
+{
+  "_department_id": "89d5dce4-4a0a-4f6c-9daa-b57b7ecdd4a0",
+  "_target_department_key": null,
+  "_only_primary": false,
+  "_include_inactive": false,
+  "_metadata": {
+    "initiated_from": "departments_page"
+  }
+}
+```
+
 Expected response fields:
 
 - `ok`
@@ -92,6 +123,16 @@ Expected response fields:
 - `status`
 - `dispatch_endpoint`
 - `message`
+
+Batch sync responses also include:
+
+- `attempted_target_count`
+- `dispatched_target_count`
+- `failed_target_count`
+- `attempted_employee_count`
+- `dispatched_employee_count`
+- `failed_employee_count`
+- `results`
 
 Registry and event data are stored in:
 

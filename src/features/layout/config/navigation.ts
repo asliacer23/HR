@@ -14,6 +14,7 @@ import {
   Calendar,
   User,
   FolderOpen,
+  BookOpen,
 } from 'lucide-react';
 import { PesoSign } from '@/components/icons/PesoSign';
 
@@ -74,6 +75,7 @@ const systemAdminNav: NavGroup[] = [
       { title: 'Training Programs', url: '/hr/training', icon: GraduationCap },
       { title: 'Employee Training', url: '/hr/employee-training', icon: GraduationCap },
       { title: 'Performance', url: '/hr/performance', icon: TrendingUp },
+      { title: 'Registrar Test', url: '/hr/registrar-instructor-test', icon: BookOpen },
     ],
   },
   {
@@ -103,6 +105,12 @@ const hrAdminNav: NavGroup[] = [
     ],
   },
   {
+    title: 'Coordination',
+    items: [
+      { title: 'Department Integration', url: '/admin/departments', icon: Building },
+    ],
+  },
+  {
     title: 'Recruitment',
     items: [
       { title: 'Job Postings', url: '/recruitment/jobs', icon: ClipboardList },
@@ -126,6 +134,7 @@ const hrAdminNav: NavGroup[] = [
       { title: 'Training Programs', url: '/hr/training', icon: GraduationCap },
       { title: 'Employee Training', url: '/hr/employee-training', icon: GraduationCap },
       { title: 'Performance', url: '/hr/performance', icon: TrendingUp },
+      { title: 'Registrar Test', url: '/hr/registrar-instructor-test', icon: BookOpen },
     ],
   },
   {

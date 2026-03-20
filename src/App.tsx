@@ -28,6 +28,7 @@ import { EmployeeBenefitsPage } from "@/features/payroll/pages/EmployeeBenefitsP
 import { PayrollRecordsPage } from "@/features/payroll/pages/PayrollRecordsPage";
 import { ReportsPage } from "@/features/reports/pages/ReportsPage";
 import { AuditLogsPage } from "@/features/admin/pages/AuditLogsPage";
+import { RegistrarInstructorTestPage } from "@/features/integration/pages/RegistrarInstructorTestPage";
 import { MyProfilePage } from "@/features/employee-self/pages/MyProfilePage";
 import { MyPayrollPage } from "@/features/employee-self/pages/MyPayrollPage";
 import { MyPayrollRecordsPage } from "@/features/employee-self/pages/MyPayrollRecordsPage";
@@ -87,6 +88,7 @@ const App = () => (
               <Route path="/hr/training" element={<TrainingPage />} />
               <Route path="/hr/employee-training" element={<EmployeeTrainingPage />} />
               <Route path="/hr/performance" element={<PerformancePage />} />
+              <Route path="/hr/registrar-instructor-test" element={<RegistrarInstructorTestPage />} />
 
               {/* Payroll Routes */}
               <Route path="/payroll" element={<PayrollPage />} />

@@ -12,6 +12,54 @@ interface AuditLog {
   created_at: string;
 }
 
+function asStringOrNull(value: unknown) {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  return String(value);
+}
+
+function normalizeAuditLog(log: unknown): AuditLog | null {
+  if (!log || typeof log !== 'object' || Array.isArray(log)) {
+    return null;
+  }
+
+  const record = log as Record<string, unknown>;
+
+  return {
+    id: String(record.id ?? ''),
+    action: asStringOrNull(record.action) ?? 'unknown',
+    table_name:
+      asStringOrNull(record.table_name) ??
+      asStringOrNull(record.entity_type) ??
+      asStringOrNull(record.module_key),
+    record_id: asStringOrNull(record.record_id) ?? asStringOrNull(record.entity_id),
+    created_at: asStringOrNull(record.created_at) ?? '',
+  };
+}
+
+function formatRecordId(value: string | null) {
+  if (!value) {
+    return '-';
+  }
+
+  return value.slice(0, 8);
+}
+
+function formatTimestamp(value: string) {
+  if (!value) {
+    return '-';
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
+}
+
 export function AuditLogsPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -32,20 +80,16 @@ export function AuditLogsPage() {
     if (error) {
       toast.error('Failed to fetch audit logs');
     } else {
-      const normalizedLogs: AuditLog[] = (data || []).map((log: any) => ({
-        id: log.id,
-        action: log.action,
-        table_name: log.table_name ?? log.entity_type ?? log.module_key ?? null,
-        record_id: log.record_id ?? log.entity_id ?? null,
-        created_at: log.created_at,
-      }));
+      const normalizedLogs = (data ?? [])
+        .map(normalizeAuditLog)
+        .filter((log): log is AuditLog => log !== null);
 
       setLogs(normalizedLogs);
     }
     setIsLoading(false);
   };
 
-  const filteredLogs = logs.filter(log =>
+  const filteredLogs = logs.filter((log) =>
     log.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
     log.table_name?.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -97,8 +141,8 @@ export function AuditLogsPage() {
                 <tr key={log.id}>
                   <td className="font-medium">{log.action}</td>
                   <td>{log.table_name || '-'}</td>
-                  <td className="font-mono text-xs">{log.record_id?.slice(0, 8) || '-'}</td>
-                  <td>{new Date(log.created_at).toLocaleString()}</td>
+                  <td className="font-mono text-xs">{formatRecordId(log.record_id)}</td>
+                  <td>{formatTimestamp(log.created_at)}</td>
                 </tr>
               ))
             )}

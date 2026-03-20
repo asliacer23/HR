@@ -1105,6 +1105,81 @@ export type Database = {
         }
         Returns: Json
       }
+      dispatch_department_employee_directory: {
+        Args: {
+          _department_id: string
+          _include_inactive?: boolean
+          _metadata?: Json
+          _only_primary?: boolean
+          _requested_by?: string | null
+          _target_department_key?: string | null
+        }
+        Returns: Json
+      }
+      dispatch_employee_profile_to_connected_departments: {
+        Args: {
+          _employee_id: string
+          _metadata?: Json
+          _only_primary?: boolean
+          _requested_by?: string | null
+        }
+        Returns: Json
+      }
+      dispatch_employee_profile_to_department: {
+        Args: {
+          _employee_id: string
+          _event_code?: string | null
+          _metadata?: Json
+          _requested_by?: string | null
+          _target_department_key: string
+        }
+        Returns: Json
+      }
+      dispatch_hr_instructor_to_registrar: {
+        Args: {
+          _college_unit: string
+          _instructor_id: string
+          _remarks?: string | null
+          _requested_by?: string | null
+          _schedule_matrix?: Json
+          _semester: string
+          _teaching_load?: Json
+        }
+        Returns: Json
+      }
+      build_employee_integration_payload: {
+        Args: {
+          _employee_id: string
+          _target_department_key?: string | null
+        }
+        Returns: Json
+      }
+      get_hr_instructor_registrar_history: {
+        Args: {
+          _instructor_id: string
+          _limit?: number | null
+        }
+        Returns: Json
+      }
+      get_hr_instructors: {
+        Args: {
+          _employment_status?: string | null
+          _limit?: number | null
+          _search?: string | null
+        }
+        Returns: Json
+      }
+      get_department_flow_events: {
+        Args: {
+          _counterparty_department_key?: string | null
+          _department_key?: string | null
+          _direction?: string | null
+          _event_code?: string | null
+          _limit?: number | null
+          _status?: string | null
+        }
+        Returns: Json
+      }
       get_department_flow_status: {
         Args: {
           _correlation_id?: string | null
@@ -1114,6 +1189,14 @@ export type Database = {
       }
       get_department_integration_registry: {
         Args: { _source_department_key?: string | null }
+        Returns: Json
+      }
+      get_integration_ready_employees: {
+        Args: {
+          _include_inactive?: boolean
+          _only_admins?: boolean
+          _target_department_key?: string | null
+        }
         Returns: Json
       }
       get_user_role: {
