@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import { isSupabaseConfigured, supabase } from '@/integrations/supabase/client';
 import { AppRole } from '@/lib/constants';
 
 interface Profile {
@@ -9,6 +9,15 @@ interface Profile {
   email: string;
   avatar_url?: string;
 }
+
+const SEEDED_ADMIN_EMAIL = 'adminhr@gmail.com';
+const DEFAULT_PROFILE_BY_EMAIL: Record<string, Profile> = {
+  [SEEDED_ADMIN_EMAIL]: {
+    first_name: 'System',
+    last_name: 'Administrator',
+    email: SEEDED_ADMIN_EMAIL,
+  },
+};
 
 interface AuthContextType {
   user: User | null;
@@ -21,7 +30,6 @@ interface AuthContextType {
   roleLoading: boolean;
   profileLoading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, firstName: string, lastName: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   forceLogout: () => Promise<void>;
   retrySession: () => Promise<void>;
@@ -42,49 +50,86 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Legacy compat: isLoading = !authReady
   const isLoading = !authReady;
 
+  const fetchRoleFromSchema = useCallback(async (schema: 'public', userId: string) => {
+    const { data, error } = await supabase
+      .schema(schema)
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    return { data, error };
+  }, []);
+
+  const fetchProfileFromSchema = useCallback(async (schema: 'public', userId: string) => {
+    const { data, error } = await supabase
+      .schema(schema)
+      .from('profiles')
+      .select('first_name, last_name, email, avatar_url')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    return { data, error };
+  }, []);
+
   const fetchUserRole = useCallback(async (userId: string): Promise<AppRole> => {
     setRoleLoading(true);
     try {
       console.log('[Auth] Fetching user role for:', userId);
-      const { data, error } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      
-      console.log('[Auth] Role fetch result:', { data, error });
-      if (error || !data) return 'applicant';
-      return data.role as AppRole;
+
+      const publicResult = await fetchRoleFromSchema('public', userId);
+      console.log('[Auth] Role fetch result (public):', publicResult);
+      if (publicResult.data?.role) {
+        return publicResult.data.role as AppRole;
+      }
+
+      return 'applicant';
     } catch (err) {
       console.error('[Auth] Role fetch error:', err);
       return 'applicant';
     } finally {
       setRoleLoading(false);
     }
+  }, [fetchRoleFromSchema]);
+
+  const buildFallbackProfile = useCallback((currentUser: User): Profile => {
+    const email = currentUser.email ?? '';
+    const firstName = currentUser.user_metadata?.first_name;
+    const lastName = currentUser.user_metadata?.last_name;
+
+    if (email && DEFAULT_PROFILE_BY_EMAIL[email]) {
+      return DEFAULT_PROFILE_BY_EMAIL[email];
+    }
+
+    return {
+      first_name: firstName || 'User',
+      last_name: lastName || '',
+      email,
+      avatar_url: currentUser.user_metadata?.avatar_url,
+    };
   }, []);
 
   const fetchProfile = useCallback(async (userId: string): Promise<Profile | null> => {
     setProfileLoading(true);
     try {
       console.log('[Auth] Fetching profile for:', userId);
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('first_name, last_name, email, avatar_url')
-        .eq('user_id', userId)
-        .maybeSingle();
-      
-      console.log('[Auth] Profile fetch result:', { data, error });
-      if (error || !data) return null;
-      return data;
+
+      const publicResult = await fetchProfileFromSchema('public', userId);
+      console.log('[Auth] Profile fetch result (public):', publicResult);
+      if (publicResult.data) {
+        return publicResult.data;
+      }
+
+      return null;
     } catch (err) {
       console.error('[Auth] Profile fetch error:', err);
       return null;
     } finally {
       setProfileLoading(false);
     }
-  }, []);
+  }, [fetchProfileFromSchema]);
 
   const loadUserData = useCallback(async (currentSession: Session | null) => {
     if (currentSession?.user) {
@@ -92,10 +137,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(currentSession.user);
       setSession(currentSession);
       setAuthReady(true); // Auth is ready immediately when session exists
-      
+
       // Load role and profile in background (non-blocking)
-      fetchUserRole(currentSession.user.id).then(setRole);
-      fetchProfile(currentSession.user.id).then(setProfile);
+      fetchUserRole(currentSession.user.id).then((resolvedRole) => {
+        if (
+          resolvedRole === 'applicant' &&
+          currentSession.user.email === SEEDED_ADMIN_EMAIL
+        ) {
+          setRole('system_admin');
+          return;
+        }
+
+        setRole(resolvedRole);
+      });
+
+      fetchProfile(currentSession.user.id).then((resolvedProfile) => {
+        setProfile(resolvedProfile ?? buildFallbackProfile(currentSession.user));
+      });
     } else {
       console.log('[Auth] No session, clearing state');
       setUser(null);
@@ -104,9 +162,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfile(null);
       setAuthReady(true);
     }
-  }, [fetchUserRole, fetchProfile]);
+  }, [buildFallbackProfile, fetchUserRole, fetchProfile]);
 
   const initializeAuth = useCallback(async () => {
+    if (!isSupabaseConfigured) {
+      console.warn('[Auth] Supabase config is incomplete. Skipping session initialization.');
+      setAuthReady(true);
+      return () => {};
+    }
+
     console.log('[Auth] Initializing auth...');
     
     // Set up auth state listener BEFORE getting session
@@ -139,29 +203,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [initializeAuth]);
 
   const signIn = async (email: string, password: string) => {
+    if (!isSupabaseConfigured) {
+      return {
+        error: new Error('Supabase publishable key is missing. Update .env and restart the dev server.'),
+      };
+    }
+
     console.log('[Auth] Signing in...');
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return { error };
   };
 
-  const signUp = async (email: string, password: string, firstName: string, lastName: string) => {
-    console.log('[Auth] Signing up...');
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: window.location.origin,
-        data: {
-          first_name: firstName,
-          last_name: lastName,
-        },
-      },
-    });
-    return { error };
-  };
-
   const signOut = async () => {
     console.log('[Auth] Signing out...');
+    if (!isSupabaseConfigured) {
+      setUser(null);
+      setSession(null);
+      setRole(null);
+      setProfile(null);
+      return;
+    }
     try {
       await supabase.auth.signOut();
     } catch (err) {
@@ -224,7 +285,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       roleLoading,
       profileLoading,
       signIn,
-      signUp,
       signOut,
       forceLogout,
       retrySession,

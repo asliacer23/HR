@@ -1,19 +1,20 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { User, Lock, Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { User, Lock, Loader2, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
+import { isSupabaseConfigured } from '@/integrations/supabase/client';
 import {
   Alert,
   AlertDescription,
 } from '@/components/ui/alert';
 
 export function LoginForm() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('adminhr@gmail.com');
+  const [password, setPassword] = useState('admin123');
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const { signIn } = useAuth();
@@ -38,14 +39,14 @@ export function LoginForm() {
     <form onSubmit={handleSubmit} className="space-y-5">
       <div className="space-y-2">
         <Label htmlFor="email" className="text-sm font-medium text-foreground">
-          Email / Username
+          Default Admin Email
         </Label>
         <div className="relative">
           <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
           <Input
             id="email"
             type="email"
-            placeholder="Enter your email"
+            placeholder="Enter the seeded admin email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="pl-10 h-11 bg-secondary/30 border-border focus:border-primary"
@@ -55,17 +56,9 @@ export function LoginForm() {
       </div>
 
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label htmlFor="password" className="text-sm font-medium text-foreground">
-            Password
-          </Label>
-          <Link 
-            to="/forgot-password" 
-            className="text-xs text-primary hover:underline hover:text-primary/80 transition-colors"
-          >
-            Forgot password?
-          </Link>
-        </div>
+        <Label htmlFor="password" className="text-sm font-medium text-foreground">
+          Password
+        </Label>
         <div className="relative">
           <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
           <Input
@@ -88,9 +81,11 @@ export function LoginForm() {
       </div>
 
       <Alert className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
-        <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+        <ShieldCheck className="h-4 w-4 text-blue-600 dark:text-blue-400" />
         <AlertDescription className="text-sm text-blue-800 dark:text-blue-300 ml-2">
-          First time logging in? Make sure to verify your email first. Check your inbox or spam folder.
+          {isSupabaseConfigured
+            ? 'Default access is provisioned from the database seed. Self-service registration and email recovery are disabled for this build.'
+            : 'Supabase publishable key is still missing in .env. Add the real key, restart the dev server, then log in with the seeded account.'}
         </AlertDescription>
       </Alert>
 

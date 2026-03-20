@@ -1,4 +1,4 @@
-import { Link, Navigate } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { LoginForm } from '../components/LoginForm';
 import { useAuth } from '../context/AuthContext';
 import logo from '@/assets/logo.png';
@@ -22,7 +22,6 @@ export function LoginPage() {
     <div className="login-container flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="login-card p-8">
-          {/* Logo and Title */}
           <div className="text-center mb-8">
             <img
               src={logo}
@@ -33,25 +32,21 @@ export function LoginPage() {
               HR Management System
             </h1>
             <p className="text-muted-foreground mt-1">
-              Login
+              Bestlink College HR access portal
             </p>
           </div>
 
-          {/* Login Form */}
           <LoginForm />
 
-          {/* Register Link */}
-          <div className="mt-6 text-center text-sm">
-            <span className="text-muted-foreground">New applicant? </span>
-            <Link to="/register" className="text-primary font-medium hover:underline">
-              Register here
-            </Link>
+          <div className="mt-6 rounded-lg border border-border/60 bg-secondary/20 px-4 py-3 text-sm">
+            <p className="font-medium text-foreground">Default seeded account</p>
+            <p className="mt-1 text-muted-foreground">Email: adminhr@gmail.com</p>
+            <p className="text-muted-foreground">Password: admin123</p>
           </div>
         </div>
 
-        {/* Footer */}
         <p className="text-center text-xs text-muted-foreground mt-6">
-          © 2024 Bestlink College of the Philippines. All rights reserved.
+          (c) 2024 Bestlink College of the Philippines. All rights reserved.
         </p>
       </div>
     </div>

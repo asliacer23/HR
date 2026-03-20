@@ -1,20 +1,41 @@
-﻿import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { ROLE_LABELS } from '@/lib/constants';
-import { 
-  Users, 
-  Briefcase, 
-  ClipboardList, 
-  TrendingUp,
-  GraduationCap,
-  UserPlus,
+import {
+  DepartmentIntegrationRegistryItem,
+  dispatchDepartmentFlow,
+  fetchDepartmentIntegrationRegistry,
+} from '@/features/integration/services/departmentIntegrationService';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { toast } from 'sonner';
+import {
+  ArrowRight,
+  BellRing,
+  Briefcase,
+  Building2,
   Calendar,
-  FileText,
   CheckCircle,
+  CircleAlert,
+  ClipboardList,
+  Clock3,
+  FileClock,
+  FileText,
+  GraduationCap,
+  Landmark,
+  MonitorSmartphone,
+  School,
+  Send,
+  ShieldCheck,
+  Stethoscope,
+  TrendingUp,
+  UserCheck,
+  UserPlus,
+  Users,
 } from 'lucide-react';
 import { PesoSign } from '@/components/icons/PesoSign';
-import { Link } from 'react-router-dom';
 
 interface StatCardProps {
   title: string;
@@ -27,17 +48,17 @@ interface StatCardProps {
 function StatCard({ title, value, icon: Icon, trend, trendUp }: StatCardProps) {
   return (
     <div className="stat-card animate-fade-in">
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm text-muted-foreground">{title}</p>
-          <p className="text-2xl font-bold text-foreground mt-1">{value}</p>
+          <p className="mt-1 text-2xl font-bold text-foreground">{value}</p>
           {trend && (
-            <p className={`text-xs mt-1 ${trendUp ? 'text-success' : 'text-destructive'}`}>
+            <p className={`mt-1 text-xs ${trendUp ? 'text-success' : 'text-destructive'}`}>
               {trend}
             </p>
           )}
         </div>
-        <div className="p-3 rounded-lg bg-primary/10">
+        <div className="rounded-lg bg-primary/10 p-3">
           <Icon className="h-6 w-6 text-primary" />
         </div>
       </div>
@@ -56,18 +77,196 @@ interface ModuleCardProps {
 function ModuleCard({ title, description, icon: Icon, url, color }: ModuleCardProps) {
   return (
     <Link to={url} className="module-card animate-fade-in group">
-      <div className={`inline-flex p-3 rounded-lg ${color} mb-4`}>
+      <div className={`mb-4 inline-flex rounded-lg p-3 ${color}`}>
         <Icon className="h-6 w-6 text-primary-foreground" />
       </div>
-      <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors">
+      <h3 className="font-semibold text-foreground transition-colors group-hover:text-primary">
         {title}
       </h3>
-      <p className="text-sm text-muted-foreground mt-1">{description}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{description}</p>
     </Link>
   );
 }
 
-// System Admin Dashboard
+function DashboardPanel({
+  title,
+  description,
+  children,
+  action,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  return (
+    <Card className="border-border/60 shadow-sm">
+      <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+        <div className="space-y-1">
+          <CardTitle className="text-lg">{title}</CardTitle>
+          {description ? <CardDescription>{description}</CardDescription> : null}
+        </div>
+        {action}
+      </CardHeader>
+      <CardContent>{children}</CardContent>
+    </Card>
+  );
+}
+
+function ActionChip({
+  label,
+  icon: Icon,
+  variant = 'secondary',
+  asLink,
+  onClick,
+  disabled,
+}: {
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  variant?: 'default' | 'secondary' | 'outline';
+  asLink?: string;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
+  if (asLink) {
+    return (
+      <Button asChild size="sm" variant={variant} className="justify-start">
+        <Link to={asLink}>
+          <Icon className="h-4 w-4" />
+          {label}
+        </Link>
+      </Button>
+    );
+  }
+
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant={variant}
+      className="justify-start"
+      onClick={onClick}
+      disabled={disabled}
+    >
+      <Icon className="h-4 w-4" />
+      {label}
+    </Button>
+  );
+}
+
+function StatusBadge({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: 'success' | 'warning' | 'danger' | 'info' | 'neutral';
+}) {
+  const toneClass = {
+    success: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    warning: 'bg-amber-100 text-amber-700 border-amber-200',
+    danger: 'bg-red-100 text-red-700 border-red-200',
+    info: 'bg-sky-100 text-sky-700 border-sky-200',
+    neutral: 'bg-slate-100 text-slate-700 border-slate-200',
+  }[tone];
+
+  return <Badge className={toneClass}>{label}</Badge>;
+}
+
+type DashboardIntegrationRow = {
+  departmentKey: string;
+  department: string;
+  purpose: string;
+  status: string;
+  tone: 'success' | 'warning' | 'danger' | 'info' | 'neutral';
+  action: string;
+  icon: React.ComponentType<{ className?: string }>;
+  endpoint: string;
+  eventCode?: string;
+};
+
+const integrationIconByDepartmentKey: Record<string, React.ComponentType<{ className?: string }>> = {
+  cashier: Landmark,
+  clinic: ShieldCheck,
+  comlab: MonitorSmartphone,
+  guidance: UserCheck,
+  pmed: Stethoscope,
+};
+
+const fallbackIntegrations: DashboardIntegrationRow[] = [
+  {
+    departmentKey: 'cashier',
+    department: 'Cashier',
+    purpose: 'Payroll endorsement, clearance hold and final financial clearance.',
+    status: 'Ready for dispatch',
+    tone: 'success',
+    action: 'Send to Cashier',
+    icon: Landmark,
+    endpoint: '/rest/v1/rpc/dispatch_department_flow',
+    eventCode: 'payroll_data',
+  },
+  {
+    departmentKey: 'clinic',
+    department: 'Clinic',
+    purpose: 'Employee profile sync, health routing, and clinic-side staff context.',
+    status: 'Ready for dispatch',
+    tone: 'success',
+    action: 'Send to Clinic',
+    icon: ShieldCheck,
+    endpoint: '/rest/v1/rpc/dispatch_department_flow',
+    eventCode: 'staff_profile_sync',
+  },
+  {
+    departmentKey: 'comlab',
+    department: 'Computer Laboratory',
+    purpose: 'Staff roster sync, access provisioning, and lab account coordination.',
+    status: 'Ready for dispatch',
+    tone: 'info',
+    action: 'Send to COMLAB',
+    icon: MonitorSmartphone,
+    endpoint: '/rest/v1/rpc/dispatch_department_flow',
+    eventCode: 'staff_list',
+  },
+  {
+    departmentKey: 'pmed',
+    department: 'PMED',
+    purpose: 'Employee monitoring, staff profile sync, and consolidated medical oversight.',
+    status: 'Ready for dispatch',
+    tone: 'danger',
+    action: 'Send to PMED',
+    icon: Stethoscope,
+    endpoint: '/rest/v1/rpc/dispatch_department_flow',
+    eventCode: 'staff_profile_sync',
+  },
+];
+
+function getIntegrationTone(item: DepartmentIntegrationRegistryItem): DashboardIntegrationRow['tone'] {
+  if (item.failed_count > 0) return 'danger';
+  if (item.pending_count > 0) return 'warning';
+  if (item.in_progress_count > 0) return 'info';
+  if (item.completed_count > 0) return 'success';
+  return 'neutral';
+}
+
+function getIntegrationStatusLabel(item: DepartmentIntegrationRegistryItem) {
+  if (item.failed_count > 0) {
+    return `${item.failed_count} handoff${item.failed_count > 1 ? 's' : ''} need attention`;
+  }
+
+  if (item.pending_count > 0) {
+    return `${item.pending_count} queued for processing`;
+  }
+
+  if (item.in_progress_count > 0) {
+    return `${item.in_progress_count} in progress`;
+  }
+
+  if (item.completed_count > 0 && item.latest_status) {
+    return `Last flow ${item.latest_status}`;
+  }
+
+  return 'Ready for dispatch';
+}
+
 function SystemAdminDashboard() {
   return (
     <div className="space-y-8">
@@ -76,11 +275,7 @@ function SystemAdminDashboard() {
         <p>Complete system overview and management</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Stats will be populated from database */}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
         <ModuleCard
           title="User Management"
           description="Manage all system users and their roles"
@@ -114,8 +309,8 @@ function SystemAdminDashboard() {
   );
 }
 
-// HR Admin Dashboard
 function HRAdminDashboard() {
+  const { user } = useAuth();
   const [stats, setStats] = useState({
     activeEmployees: 0,
     newApplications: 0,
@@ -123,32 +318,32 @@ function HRAdminDashboard() {
     trainingPrograms: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [integrationRegistry, setIntegrationRegistry] = useState<DepartmentIntegrationRegistryItem[]>([]);
+  const [integrationLoading, setIntegrationLoading] = useState(true);
+  const [dispatchingDepartmentKey, setDispatchingDepartmentKey] = useState<string | null>(null);
 
   useEffect(() => {
     loadStats();
+    loadIntegrationRegistry();
   }, []);
 
   const loadStats = async () => {
     try {
-      // Fetch active employees
       const { count: employeeCount } = await supabase
         .from('employees')
         .select('*', { count: 'exact', head: true })
         .eq('employment_status', 'active');
 
-      // Fetch new applications (pending status)
       const { count: applicationCount } = await supabase
         .from('job_applications')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'applied');
 
-      // Fetch pending performance evaluations
       const { count: reviewCount } = await supabase
         .from('performance_evaluations')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'pending');
 
-      // Fetch training programs
       const { count: trainingCount } = await supabase
         .from('training_programs')
         .select('*', { count: 'exact', head: true });
@@ -166,78 +361,509 @@ function HRAdminDashboard() {
     }
   };
 
+  const loadIntegrationRegistry = async () => {
+    setIntegrationLoading(true);
+    const { data, error } = await fetchDepartmentIntegrationRegistry('hr');
+
+    if (error) {
+      console.error('Failed to load department integration registry:', error);
+      setIntegrationRegistry([]);
+      setIntegrationLoading(false);
+      return;
+    }
+
+    setIntegrationRegistry(data);
+    setIntegrationLoading(false);
+  };
+
+  const summaryCards = [
+    {
+      title: 'Active Employees',
+      value: isLoading ? '...' : stats.activeEmployees,
+      trend: 'Faculty and staff roster aligned for 2nd semester',
+      trendUp: true,
+      icon: Users,
+    },
+    {
+      title: 'Faculty Assignment Gaps',
+      value: 6,
+      trend: 'Need dean approval before Monday load finalization',
+      trendUp: false,
+      icon: School,
+    },
+    {
+      title: 'Pending Leave Approvals',
+      value: 12,
+      trend: '8 teaching staff awaiting principal confirmation',
+      trendUp: false,
+      icon: Calendar,
+    },
+    {
+      title: 'Payroll Coordination Batch',
+      value: 'March 28',
+      trend: 'Variance pack ready for Cashier endorsement',
+      trendUp: true,
+      icon: PesoSign,
+    },
+    {
+      title: 'Contract Renewals',
+      value: 9,
+      trend: '4 expiring within 30 days',
+      trendUp: false,
+      icon: FileClock,
+    },
+    {
+      title: 'Training & Evaluation',
+      value: `${isLoading ? '...' : stats.trainingPrograms}/${isLoading ? '...' : stats.pendingReviews}`,
+      trend: 'Programs live / pending evaluation reviews',
+      trendUp: true,
+      icon: GraduationCap,
+    },
+  ];
+
+  const approvalQueue = [
+    {
+      title: 'Approve leave endorsements for Senior High faculty',
+      meta: '12 requests | 5 urgent substitutions needed',
+      badge: { label: 'Approve Leave', tone: 'warning' as const },
+      actions: ['Approve Leave', 'Forward to Administration'],
+    },
+    {
+      title: 'Payroll variance packet for late overload pay',
+      meta: 'Cashier coordination | cut-off closes at 3:00 PM',
+      badge: { label: 'Submit Payroll', tone: 'info' as const },
+      actions: ['Submit Payroll', 'Send to Cashier'],
+    },
+    {
+      title: 'PMED fit-to-work follow-up for new hires',
+      meta: '3 onboarding employees missing medical clearance',
+      badge: { label: 'Send to PMED', tone: 'danger' as const },
+      actions: ['Send to PMED', 'Start Clearance'],
+    },
+    {
+      title: 'Contract renewal routing for probationary instructors',
+      meta: '9 faculty contracts | dean remarks attached',
+      badge: { label: 'Renew Contract', tone: 'success' as const },
+      actions: ['Renew Contract', 'Forward to Administration'],
+    },
+  ];
+
+  const integrations: DashboardIntegrationRow[] = integrationRegistry.length
+    ? integrationRegistry.map((item) => {
+        const primaryRoute = [...item.routes].sort((left, right) => left.priority - right.priority)[0];
+
+        return {
+          departmentKey: item.department_key,
+          department: item.department_name,
+          purpose: item.purpose,
+          status: getIntegrationStatusLabel(item),
+          tone: getIntegrationTone(item),
+          action: item.default_action_label,
+          icon: integrationIconByDepartmentKey[item.department_key] ?? Building2,
+          endpoint: item.dispatch_endpoint,
+          eventCode: primaryRoute?.event_code,
+        };
+      })
+    : fallbackIntegrations;
+
+  const handleDepartmentDispatch = async (item: DashboardIntegrationRow) => {
+    setDispatchingDepartmentKey(item.departmentKey);
+
+    const { data, error } = await dispatchDepartmentFlow({
+      targetDepartmentKey: item.departmentKey,
+      eventCode: item.eventCode,
+      sourceRecordId: `HR-${item.departmentKey.toUpperCase()}-${Date.now()}`,
+      requestedBy: user?.id,
+      payload: {
+        initiated_from: 'hr_dashboard',
+        requested_by_email: user?.email ?? null,
+        target_department: item.department,
+        action_label: item.action,
+        endpoint: item.endpoint,
+      },
+    });
+
+    if (error) {
+      toast.error(error);
+      setDispatchingDepartmentKey(null);
+      return;
+    }
+
+    if (!data?.ok) {
+      toast.error(data?.message ?? `Failed to route to ${item.department}.`);
+      setDispatchingDepartmentKey(null);
+      return;
+    }
+
+    toast.success(`${item.department} flow queued`, {
+      description: `${data.event_code ?? 'Dispatch'} routed via ${data.dispatch_endpoint ?? item.endpoint}`,
+    });
+
+    await loadIntegrationRegistry();
+    setDispatchingDepartmentKey(null);
+  };
+
+  const alerts = [
+    {
+      title: 'Contract renewal window closes this week',
+      detail: 'Nine probationary faculty need dean and school administration signatures before Friday.',
+      tone: 'warning' as const,
+    },
+    {
+      title: 'Payroll variance packet waiting on overload certification',
+      detail: 'Cashier will not release the adjustment batch until Registrar confirms final faculty loads.',
+      tone: 'danger' as const,
+    },
+    {
+      title: 'Three onboarding hires are still missing PMED fit-to-work forms',
+      detail: 'Delay affects ID release, payroll activation and faculty assignment readiness.',
+      tone: 'info' as const,
+    },
+  ];
+
+  const auditTrail = [
+    '08:45 AM | Submitted overload payroll memo to Cashier for March faculty adjustments.',
+    '09:10 AM | Forwarded Dean-approved faculty assignment sheet to Registrar.',
+    '10:00 AM | Sent two onboarding staff to PMED for fit-to-work completion.',
+    '10:28 AM | Approved emergency leave for SHS English instructor and copied Administration.',
+    '11:05 AM | Started employee clearance for resigned laboratory assistant.',
+  ];
+
+  const lifecycleFlow = [
+    { stage: 'Recruitment', note: 'Applicants screened and ranked', count: `${isLoading ? '...' : stats.newApplications} open applications` },
+    { stage: 'Onboarding', note: 'HR, PMED, Clinic and IT coordination', count: '3 hires in motion' },
+    { stage: 'Faculty Assignment', note: 'Registrar and dean load distribution', count: '6 schedules to finalize' },
+    { stage: 'Active Service', note: 'Leave, payroll, attendance and case support', count: `${isLoading ? '...' : stats.activeEmployees} active employees` },
+    { stage: 'Evaluation & Renewal', note: 'Performance, training and contract review', count: `${isLoading ? '...' : stats.pendingReviews} pending reviews` },
+    { stage: 'Clearance & Exit', note: 'Cashier, Registrar, IT and Guidance routing', count: '4 active clearance cases' },
+  ];
+
   return (
     <div className="space-y-8">
-      <div className="page-header">
-        <h1>HR Dashboard</h1>
-        <p>Manage recruitment, employees, and HR operations</p>
+      <Card className="overflow-hidden border-border/60 bg-gradient-to-r from-primary to-accent text-primary-foreground shadow-lg">
+        <CardContent className="p-0">
+          <div className="grid gap-6 px-6 py-8 lg:grid-cols-[1.7fr_1fr] lg:px-8">
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className="bg-white/15 text-white hover:bg-white/20">Bestlink College HR Operations</Badge>
+                <Badge className="bg-white/10 text-white hover:bg-white/20">School Management System</Badge>
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold tracking-tight">HR Department Command Center</h1>
+                <p className="mt-2 max-w-3xl text-sm text-primary-foreground/85">
+                  Monitor employee records, faculty assignment, onboarding, payroll coordination, leave approvals,
+                  performance evaluation, contract renewal and employee clearance across the college.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <ActionChip label="Add Employee" icon={UserPlus} variant="outline" asLink="/employees" />
+                <ActionChip label="Assign Faculty" icon={School} variant="outline" asLink="/employees" />
+                <ActionChip label="Submit Payroll" icon={PesoSign} variant="outline" asLink="/payroll" />
+                <ActionChip label="Approve Leave" icon={Calendar} variant="outline" />
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/15 bg-white/10 p-5 backdrop-blur-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-primary-foreground/85">Today&apos;s HR Focus</p>
+                  <p className="mt-1 text-xl font-semibold">College-wide staffing and compliance</p>
+                </div>
+                <BellRing className="h-8 w-8 text-white/85" />
+              </div>
+              <div className="mt-5 space-y-3 text-sm text-primary-foreground/90">
+                <div className="rounded-xl bg-black/10 p-3">
+                  <p className="font-medium">Payroll endorsement deadline</p>
+                  <p className="mt-1 text-primary-foreground/75">Cashier packet submission before 3:00 PM.</p>
+                </div>
+                <div className="rounded-xl bg-black/10 p-3">
+                  <p className="font-medium">Faculty load validation</p>
+                  <p className="mt-1 text-primary-foreground/75">Registrar still needs six assignment confirmations.</p>
+                </div>
+                <div className="rounded-xl bg-black/10 p-3">
+                  <p className="font-medium">Medical onboarding</p>
+                  <p className="mt-1 text-primary-foreground/75">PMED and Clinic follow-up pending for three hires.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+        {summaryCards.map((card) => (
+          <StatCard
+            key={card.title}
+            title={card.title}
+            value={card.value}
+            icon={card.icon}
+            trend={card.trend}
+            trendUp={card.trendUp}
+          />
+        ))}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard title="Active Employees" value={stats.activeEmployees} icon={Users} />
-        <StatCard title="New Applications" value={stats.newApplications} icon={UserPlus} />
-        <StatCard title="Pending Reviews" value={stats.pendingReviews} icon={TrendingUp} />
-        <StatCard title="Training Programs" value={stats.trainingPrograms} icon={GraduationCap} />
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <DashboardPanel
+          title="Approval Queue"
+          description="Time-sensitive HR approvals and cross-department routing for the school week."
+          action={<Badge variant="secondary" className="bg-warning/10 text-warning">Priority Board</Badge>}
+        >
+          <div className="space-y-4">
+            {approvalQueue.map((item) => (
+              <div key={item.title} className="rounded-xl border border-border/60 bg-muted/20 p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-medium text-foreground">{item.title}</p>
+                      <StatusBadge label={item.badge.label} tone={item.badge.tone} />
+                    </div>
+                    <p className="text-sm text-muted-foreground">{item.meta}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {item.actions.map((action) => (
+                      <Button key={action} type="button" size="sm" variant="outline">
+                        {action}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </DashboardPanel>
+
+        <DashboardPanel
+          title="Department Integration Tracker"
+          description="School office coordination across the employee lifecycle."
+          action={
+            <Badge variant="secondary" className="bg-success/10 text-success">
+              {integrationLoading ? 'Loading RPC Registry' : 'Live Handoff Matrix'}
+            </Badge>
+          }
+        >
+          <div className="space-y-3">
+            {integrations.map((item) => {
+              const Icon = item.icon;
+              return (
+                <div key={item.department} className="flex flex-col gap-3 rounded-xl border border-border/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-lg bg-primary/10 p-2">
+                      <Icon className="h-5 w-5 text-primary" />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium text-foreground">{item.department}</p>
+                        <StatusBadge label={item.status} tone={item.tone} />
+                      </div>
+                      <p className="text-sm text-muted-foreground">{item.purpose}</p>
+                      <p className="font-mono text-xs text-muted-foreground/80">
+                        Endpoint: {item.endpoint}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void handleDepartmentDispatch(item)}
+                    disabled={dispatchingDepartmentKey === item.departmentKey}
+                  >
+                    <Send className="h-4 w-4" />
+                    {dispatchingDepartmentKey === item.departmentKey ? 'Dispatching...' : item.action}
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        </DashboardPanel>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <ModuleCard
-          title="Applicants"
-          description="Review and process job applications"
-          icon={UserPlus}
-          url="/recruitment/applicants"
-          color="bg-primary"
-        />
-        <ModuleCard
-          title="Employees"
-          description="View and manage employee records"
-          icon={Users}
-          url="/employees"
-          color="bg-accent"
-        />
-        <ModuleCard
-          title="Performance"
-          description="Conduct performance evaluations"
-          icon={TrendingUp}
-          url="/hr/performance"
-          color="bg-success"
-        />
-        <ModuleCard
-          title="Training"
-          description="Manage training programs"
-          icon={GraduationCap}
-          url="/hr/training"
-          color="bg-warning"
-        />
-        <ModuleCard
-          title="Payroll"
-          description="Process monthly payroll"
-          icon={PesoSign}
-          url="/payroll"
-          color="bg-primary"
-        />
-        <ModuleCard
-          title="Reports"
-          description="Generate HR reports"
-          icon={FileText}
-          url="/reports"
-          color="bg-accent"
-        />
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1fr_0.9fr]">
+        <DashboardPanel
+          title="Alerts & Compliance"
+          description="Critical issues that need HR action before payroll, onboarding or contract deadlines."
+        >
+          <div className="space-y-3">
+            {alerts.map((alert) => (
+              <div key={alert.title} className="rounded-xl border border-border/60 p-4">
+                <div className="flex items-start gap-3">
+                  {alert.tone === 'danger' ? (
+                    <CircleAlert className="mt-0.5 h-5 w-5 text-destructive" />
+                  ) : alert.tone === 'warning' ? (
+                    <Clock3 className="mt-0.5 h-5 w-5 text-warning" />
+                  ) : (
+                    <CheckCircle className="mt-0.5 h-5 w-5 text-accent" />
+                  )}
+                  <div className="space-y-1">
+                    <p className="font-medium text-foreground">{alert.title}</p>
+                    <p className="text-sm text-muted-foreground">{alert.detail}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </DashboardPanel>
+
+        <DashboardPanel
+          title="Employee Lifecycle Flow"
+          description="How HR routes employee cases from hiring through clearance."
+        >
+          <div className="space-y-3">
+            {lifecycleFlow.map((stage, index) => (
+              <div key={stage.stage} className="flex gap-3">
+                <div className="flex flex-col items-center">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+                    {index + 1}
+                  </div>
+                  {index < lifecycleFlow.length - 1 ? <div className="mt-2 h-full w-px bg-border" /> : null}
+                </div>
+                <div className="flex-1 rounded-xl border border-border/60 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-medium text-foreground">{stage.stage}</p>
+                    <Badge variant="outline">{stage.count}</Badge>
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">{stage.note}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </DashboardPanel>
+
+        <DashboardPanel
+          title="Audit Logs"
+          description="Recent HR system actions and inter-office endorsements."
+          action={
+            <Button asChild size="sm" variant="ghost">
+              <Link to="/admin/audit-logs">
+                View All
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          }
+        >
+          <div className="space-y-3">
+            {auditTrail.map((entry) => (
+              <div key={entry} className="rounded-xl border border-border/60 bg-muted/20 p-3 text-sm text-foreground">
+                {entry}
+              </div>
+            ))}
+          </div>
+        </DashboardPanel>
       </div>
+
+      <DashboardPanel
+        title="HR Workflow Shortcuts"
+        description="Operational modules for college HR administration, payroll coordination and compliance reporting."
+      >
+        <div className="mb-4 flex flex-wrap gap-2">
+          <ActionChip label="Add Employee" icon={UserPlus} variant="default" asLink="/employees" />
+          <ActionChip label="Assign Faculty" icon={School} variant="secondary" asLink="/employees" />
+          <ActionChip label="Submit Payroll" icon={PesoSign} variant="secondary" asLink="/payroll" />
+          <ActionChip label="Approve Leave" icon={Calendar} variant="secondary" />
+          <ActionChip
+            label="Send to Cashier"
+            icon={Landmark}
+            variant="outline"
+            onClick={() => void handleDepartmentDispatch(integrations.find((item) => item.departmentKey === 'cashier') ?? fallbackIntegrations[0])}
+            disabled={dispatchingDepartmentKey === 'cashier'}
+          />
+          <ActionChip
+            label="Send to Clinic"
+            icon={ShieldCheck}
+            variant="outline"
+            onClick={() => void handleDepartmentDispatch(integrations.find((item) => item.departmentKey === 'clinic') ?? fallbackIntegrations.find((item) => item.departmentKey === 'clinic')!)}
+            disabled={dispatchingDepartmentKey === 'clinic'}
+          />
+          <ActionChip
+            label="Send to COMLAB"
+            icon={MonitorSmartphone}
+            variant="outline"
+            onClick={() => void handleDepartmentDispatch(integrations.find((item) => item.departmentKey === 'comlab') ?? fallbackIntegrations.find((item) => item.departmentKey === 'comlab')!)}
+            disabled={dispatchingDepartmentKey === 'comlab'}
+          />
+          <ActionChip
+            label="Send to PMED"
+            icon={Stethoscope}
+            variant="outline"
+            onClick={() => void handleDepartmentDispatch(integrations.find((item) => item.departmentKey === 'pmed') ?? fallbackIntegrations.find((item) => item.departmentKey === 'pmed')!)}
+            disabled={dispatchingDepartmentKey === 'pmed'}
+          />
+          <ActionChip label="Forward to Administration" icon={Building2} variant="outline" />
+          <ActionChip label="Renew Contract" icon={FileClock} variant="outline" asLink="/employees/contracts" />
+          <ActionChip label="Start Clearance" icon={ClipboardList} variant="outline" />
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+          <ModuleCard
+            title="Employee Records"
+            description="Maintain faculty and staff master records, appointment history and document completeness."
+            icon={Users}
+            url="/employees"
+            color="bg-primary"
+          />
+          <ModuleCard
+            title="Faculty Assignment"
+            description="Coordinate department teaching loads with Registrar and school administration."
+            icon={School}
+            url="/employees"
+            color="bg-accent"
+          />
+          <ModuleCard
+            title="Onboarding"
+            description="Track hiring requirements, PMED routing, Clinic advice and IT provisioning."
+            icon={UserCheck}
+            url="/hr/employee-onboarding"
+            color="bg-success"
+          />
+          <ModuleCard
+            title="Payroll Coordination"
+            description="Prepare payroll periods, endorsements and cashier-ready variance submissions."
+            icon={PesoSign}
+            url="/payroll"
+            color="bg-warning"
+          />
+          <ModuleCard
+            title="Performance Evaluation"
+            description="Manage faculty and staff review cycles, ratings, recommendations and dean approvals."
+            icon={TrendingUp}
+            url="/hr/performance"
+            color="bg-primary"
+          />
+          <ModuleCard
+            title="Contract Renewal"
+            description="Monitor expiring appointments, prepare renewal packets and secure school admin sign-off."
+            icon={FileClock}
+            url="/employees/contracts"
+            color="bg-accent"
+          />
+          <ModuleCard
+            title="Clearance"
+            description="Coordinate exit or transfer clearance with Cashier, Registrar, IT and Guidance."
+            icon={ClipboardList}
+            url="/reports"
+            color="bg-success"
+          />
+          <ModuleCard
+            title="Reports & Audit"
+            description="Produce HR reports, compliance summaries and traceable inter-office audit records."
+            icon={FileText}
+            url="/reports"
+            color="bg-warning"
+          />
+        </div>
+      </DashboardPanel>
     </div>
   );
 }
 
-// Employee Dashboard
 function EmployeeDashboard() {
   const { profile, user } = useAuth();
   const [stats, setStats] = useState({
     trainingCompleted: 0,
     pendingTraining: 0,
     lastReviewScore: 'N/A',
-    employeeId: '',
   });
-  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     if (user) {
@@ -247,33 +873,26 @@ function EmployeeDashboard() {
 
   const loadStats = async () => {
     try {
-      // Get employee ID
       const { data: employeeData } = await supabase
         .from('employees')
         .select('id')
         .eq('user_id', user?.id)
         .single();
 
-      if (!employeeData) {
-        setIsLoading(false);
-        return;
-      }
+      if (!employeeData) return;
 
-      // Fetch completed trainings
       const { count: completedCount } = await supabase
         .from('employee_trainings')
         .select('*', { count: 'exact', head: true })
         .eq('employee_id', employeeData.id)
         .eq('status', 'completed');
 
-      // Fetch pending trainings
       const { count: pendingCount } = await supabase
         .from('employee_trainings')
         .select('*', { count: 'exact', head: true })
         .eq('employee_id', employeeData.id)
         .in('status', ['scheduled', 'in_progress']);
 
-      // Fetch latest performance evaluation
       const { data: evaluationData } = await supabase
         .from('performance_evaluations')
         .select('overall_rating')
@@ -286,12 +905,9 @@ function EmployeeDashboard() {
         trainingCompleted: completedCount || 0,
         pendingTraining: pendingCount || 0,
         lastReviewScore: evaluationData?.overall_rating ? `${evaluationData.overall_rating}/5` : 'N/A',
-        employeeId: employeeData.id,
       });
     } catch (error) {
       console.error('Failed to load employee dashboard stats:', error);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -302,14 +918,14 @@ function EmployeeDashboard() {
         <p>View your employment information and records</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
         <StatCard title="Training Completed" value={stats.trainingCompleted} icon={CheckCircle} />
         <StatCard title="Pending Training" value={stats.pendingTraining} icon={GraduationCap} />
         <StatCard title="Last Review Score" value={stats.lastReviewScore} icon={TrendingUp} />
         <StatCard title="Documents" value={0} icon={FileText} />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
         <ModuleCard
           title="My Profile"
           description="View and update personal information"
@@ -336,7 +952,6 @@ function EmployeeDashboard() {
   );
 }
 
-// Applicant Dashboard
 function ApplicantDashboard() {
   const { profile, user } = useAuth();
   const [stats, setStats] = useState({
@@ -344,7 +959,6 @@ function ApplicantDashboard() {
     myApplications: 0,
     interviews: 0,
   });
-  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     if (user) {
@@ -354,12 +968,10 @@ function ApplicantDashboard() {
 
   const loadStats = async () => {
     try {
-      // Fetch active job postings
       const { count: jobCount } = await supabase
         .from('job_postings')
         .select('*', { count: 'exact', head: true });
 
-      // Get applicant ID and their applications
       const { data: applicantData } = await supabase
         .from('applicants')
         .select('id')
@@ -370,20 +982,13 @@ function ApplicantDashboard() {
       let interviewCount = 0;
 
       if (applicantData) {
-        // Fetch applicant's applications
         const { count: appCount } = await supabase
           .from('job_applications')
           .select('*', { count: 'exact', head: true })
           .eq('applicant_id', applicantData.id);
 
-        // Fetch scheduled interviews
-        const { count: interviewsCount } = await supabase
-          .from('interview_schedules')
-          .select('*', { count: 'exact', head: true })
-          .eq('applicant_id', applicantData.id);
-
         applicationCount = appCount || 0;
-        interviewCount = interviewsCount || 0;
+        interviewCount = 0;
       }
 
       setStats({
@@ -393,8 +998,6 @@ function ApplicantDashboard() {
       });
     } catch (error) {
       console.error('Failed to load applicant dashboard stats:', error);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -405,13 +1008,13 @@ function ApplicantDashboard() {
         <p>Find and apply for job opportunities</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
         <StatCard title="Available Jobs" value={stats.availableJobs} icon={Briefcase} />
         <StatCard title="My Applications" value={stats.myApplications} icon={ClipboardList} />
         <StatCard title="Interviews" value={stats.interviews} icon={Calendar} />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
         <ModuleCard
           title="Browse Jobs"
           description="View all available positions"
@@ -443,7 +1046,6 @@ export function DashboardPage() {
 
   switch (role) {
     case 'system_admin':
-      return <SystemAdminDashboard />;
     case 'hr_admin':
       return <HRAdminDashboard />;
     case 'employee':
@@ -453,5 +1055,3 @@ export function DashboardPage() {
       return <ApplicantDashboard />;
   }
 }
-
-

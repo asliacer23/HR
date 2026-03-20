@@ -6,7 +6,6 @@ import { toast } from 'sonner';
 
 interface AuditLog {
   id: string;
-  user_id: string | null;
   action: string;
   table_name: string | null;
   record_id: string | null;
@@ -33,7 +32,15 @@ export function AuditLogsPage() {
     if (error) {
       toast.error('Failed to fetch audit logs');
     } else {
-      setLogs(data || []);
+      const normalizedLogs: AuditLog[] = (data || []).map((log: any) => ({
+        id: log.id,
+        action: log.action,
+        table_name: log.table_name ?? log.entity_type ?? log.module_key ?? null,
+        record_id: log.record_id ?? log.entity_id ?? null,
+        created_at: log.created_at,
+      }));
+
+      setLogs(normalizedLogs);
     }
     setIsLoading(false);
   };

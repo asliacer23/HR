@@ -1013,6 +1013,109 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      acknowledge_department_flow: {
+        Args: {
+          _error?: string | null
+          _event_id: string
+          _response?: Json
+          _status?: string
+        }
+        Returns: Json
+      }
+      dispatch_department_flow: {
+        Args: {
+          _event_code?: string | null
+          _payload?: Json
+          _requested_by?: string | null
+          _source_department_key: string
+          _source_record_id?: string | null
+          _target_department_key: string
+        }
+        Returns: Json
+      }
+      dispatch_to_cashier: {
+        Args: {
+          _event_code?: string | null
+          _payload?: Json
+          _requested_by?: string | null
+          _source_record_id?: string | null
+        }
+        Returns: Json
+      }
+      dispatch_to_clinic: {
+        Args: {
+          _event_code?: string | null
+          _payload?: Json
+          _requested_by?: string | null
+          _source_record_id?: string | null
+        }
+        Returns: Json
+      }
+      dispatch_to_comlab: {
+        Args: {
+          _event_code?: string | null
+          _payload?: Json
+          _requested_by?: string | null
+          _source_record_id?: string | null
+        }
+        Returns: Json
+      }
+      dispatch_to_crad: {
+        Args: {
+          _event_code?: string | null
+          _payload?: Json
+          _requested_by?: string | null
+          _source_record_id?: string | null
+        }
+        Returns: Json
+      }
+      dispatch_to_guidance: {
+        Args: {
+          _event_code?: string | null
+          _payload?: Json
+          _requested_by?: string | null
+          _source_record_id?: string | null
+        }
+        Returns: Json
+      }
+      dispatch_to_pmed: {
+        Args: {
+          _event_code?: string | null
+          _payload?: Json
+          _requested_by?: string | null
+          _source_record_id?: string | null
+        }
+        Returns: Json
+      }
+      dispatch_to_prefect: {
+        Args: {
+          _event_code?: string | null
+          _payload?: Json
+          _requested_by?: string | null
+          _source_record_id?: string | null
+        }
+        Returns: Json
+      }
+      dispatch_to_registrar: {
+        Args: {
+          _event_code?: string | null
+          _payload?: Json
+          _requested_by?: string | null
+          _source_record_id?: string | null
+        }
+        Returns: Json
+      }
+      get_department_flow_status: {
+        Args: {
+          _correlation_id?: string | null
+          _event_id?: string | null
+        }
+        Returns: Json
+      }
+      get_department_integration_registry: {
+        Args: { _source_department_key?: string | null }
+        Returns: Json
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
