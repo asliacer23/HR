@@ -165,7 +165,7 @@ VALUES
         '{"type":"connected_department","module":"clinicsystem","supports":["health_clearance","return_to_work_advice"]}'::jsonb
     ),
     (
-        'comlab_it',
+        'comlab',
         'Computer Laboratory / IT',
         'COMLAB',
         'Computer-Laboratory',
@@ -348,7 +348,7 @@ VALUES
         'hr_to_comlab_account_provision',
         'HR Account Provisioning to Computer Laboratory / IT',
         'hr',
-        'comlab_it',
+        'comlab',
         'account_provision',
         'POST',
         '/rest/v1/rpc/dispatch_to_comlab',
@@ -364,7 +364,7 @@ VALUES
         'hr_to_comlab_asset_clearance',
         'HR Asset Clearance to Computer Laboratory / IT',
         'hr',
-        'comlab_it',
+        'comlab',
         'asset_clearance',
         'POST',
         '/rest/v1/rpc/dispatch_to_comlab',
@@ -830,7 +830,7 @@ LANGUAGE sql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-    SELECT public.dispatch_department_flow('hr', 'comlab_it', _event_code, _source_record_id, _payload, _requested_by);
+    SELECT public.dispatch_department_flow('hr', 'comlab', _event_code, _source_record_id, _payload, _requested_by);
 $$;
 
 CREATE OR REPLACE FUNCTION public.dispatch_to_crad(

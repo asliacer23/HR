@@ -178,7 +178,7 @@ export async function dispatchDepartmentFlow(input: DispatchDepartmentFlowInput)
       _target_department_key: input.targetDepartmentKey,
       _event_code: input.eventCode ?? null,
       _source_record_id: input.sourceRecordId ?? null,
-      _payload: payload,
+      _payload: payload as any,
       _requested_by: input.requestedBy ?? null,
     });
 

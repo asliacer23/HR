@@ -202,7 +202,7 @@ const fallbackIntegrations: DashboardIntegrationRow[] = [
     action: 'Send to Cashier',
     icon: Landmark,
     endpoint: '/rest/v1/rpc/dispatch_department_flow',
-    eventCode: 'payroll_data',
+    eventCode: 'payroll_submission',
   },
   {
     departmentKey: 'clinic',
@@ -213,7 +213,7 @@ const fallbackIntegrations: DashboardIntegrationRow[] = [
     action: 'Send to Clinic',
     icon: ShieldCheck,
     endpoint: '/rest/v1/rpc/dispatch_department_flow',
-    eventCode: 'staff_profile_sync',
+    eventCode: 'employee_profile_sync',
   },
   {
     departmentKey: 'comlab',
@@ -224,7 +224,7 @@ const fallbackIntegrations: DashboardIntegrationRow[] = [
     action: 'Send to COMLAB',
     icon: MonitorSmartphone,
     endpoint: '/rest/v1/rpc/dispatch_department_flow',
-    eventCode: 'staff_list',
+    eventCode: 'employee_profile_sync',
   },
   {
     departmentKey: 'pmed',
@@ -235,7 +235,7 @@ const fallbackIntegrations: DashboardIntegrationRow[] = [
     action: 'Send to PMED',
     icon: Stethoscope,
     endpoint: '/rest/v1/rpc/dispatch_department_flow',
-    eventCode: 'staff_profile_sync',
+    eventCode: 'employee_profile_sync',
   },
 ];
 

@@ -716,7 +716,7 @@ BEGIN
                 'hr-comlab-demo-001',
                 'hr_to_comlab_account_provision',
                 'hr',
-                'comlab_it',
+                'comlab',
                 'ACC-PROVISION-LEA-2026',
                 'account_provision',
                 'dispatched',
