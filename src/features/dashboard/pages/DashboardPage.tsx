@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -311,6 +311,7 @@ function SystemAdminDashboard() {
 
 function HRAdminDashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [stats, setStats] = useState({
     activeEmployees: 0,
     newApplications: 0,
@@ -466,41 +467,101 @@ function HRAdminDashboard() {
       })
     : fallbackIntegrations;
 
+  const findIntegrationByDepartmentKey = (departmentKey: string) =>
+    integrations.find((item) => item.departmentKey === departmentKey)
+    ?? fallbackIntegrations.find((item) => item.departmentKey === departmentKey)
+    ?? null;
+
   const handleDepartmentDispatch = async (item: DashboardIntegrationRow) => {
     setDispatchingDepartmentKey(item.departmentKey);
 
-    const { data, error } = await dispatchDepartmentFlow({
-      targetDepartmentKey: item.departmentKey,
-      eventCode: item.eventCode,
-      sourceRecordId: `HR-${item.departmentKey.toUpperCase()}-${Date.now()}`,
-      requestedBy: user?.id,
-      payload: {
-        initiated_from: 'hr_dashboard',
-        requested_by_email: user?.email ?? null,
-        target_department: item.department,
-        action_label: item.action,
-        endpoint: item.endpoint,
-      },
-    });
+    try {
+      const { data, error } = await dispatchDepartmentFlow({
+        targetDepartmentKey: item.departmentKey,
+        eventCode: item.eventCode,
+        sourceRecordId: `HR-${item.departmentKey.toUpperCase()}-${Date.now()}`,
+        requestedBy: user?.id,
+        payload: {
+          initiated_from: 'hr_dashboard',
+          requested_by_email: user?.email ?? null,
+          target_department: item.department,
+          action_label: item.action,
+          endpoint: item.endpoint,
+        },
+      });
 
-    if (error) {
-      toast.error(error);
+      if (error) {
+        toast.error(error);
+        return;
+      }
+
+      if (!data?.ok) {
+        toast.error(data?.message ?? `Failed to route to ${item.department}.`);
+        return;
+      }
+
+      toast.success(`${item.department} flow queued`, {
+        description: `${data.event_code ?? 'Dispatch'} routed via ${data.dispatch_endpoint ?? item.endpoint}`,
+      });
+
+      await loadIntegrationRegistry();
+    } catch (error) {
+      console.error('Failed to dispatch dashboard integration action:', error);
+      toast.error(error instanceof Error ? error.message : `Failed to route to ${item.department}.`);
+    } finally {
       setDispatchingDepartmentKey(null);
-      return;
     }
+  };
 
-    if (!data?.ok) {
-      toast.error(data?.message ?? `Failed to route to ${item.department}.`);
-      setDispatchingDepartmentKey(null);
-      return;
+  const handleDashboardAction = async (actionLabel: string) => {
+    switch (actionLabel) {
+      case 'Add Employee':
+        navigate('/employees');
+        return;
+      case 'Assign Faculty':
+        navigate('/hr/registrar-instructor-test');
+        return;
+      case 'Submit Payroll':
+        navigate('/payroll');
+        return;
+      case 'Approve Leave':
+        navigate('/employees');
+        toast.info('Leave approvals are managed from the employee roster in this build.');
+        return;
+      case 'Renew Contract':
+        navigate('/employees/contracts');
+        return;
+      case 'Forward to Administration':
+        navigate('/admin/departments');
+        toast.info('Use Department Integration to forward HR actions to connected offices.');
+        return;
+      case 'Start Clearance':
+        navigate('/admin/departments');
+        toast.info('Open Department Integration to begin the employee clearance handoff.');
+        return;
+      case 'Send to Cashier':
+        if (findIntegrationByDepartmentKey('cashier')) {
+          await handleDepartmentDispatch(findIntegrationByDepartmentKey('cashier')!);
+        }
+        return;
+      case 'Send to Clinic':
+        if (findIntegrationByDepartmentKey('clinic')) {
+          await handleDepartmentDispatch(findIntegrationByDepartmentKey('clinic')!);
+        }
+        return;
+      case 'Send to COMLAB':
+        if (findIntegrationByDepartmentKey('comlab')) {
+          await handleDepartmentDispatch(findIntegrationByDepartmentKey('comlab')!);
+        }
+        return;
+      case 'Send to PMED':
+        if (findIntegrationByDepartmentKey('pmed')) {
+          await handleDepartmentDispatch(findIntegrationByDepartmentKey('pmed')!);
+        }
+        return;
+      default:
+        toast.info(`${actionLabel} is not wired to a dedicated workflow yet.`);
     }
-
-    toast.success(`${item.department} flow queued`, {
-      description: `${data.event_code ?? 'Dispatch'} routed via ${data.dispatch_endpoint ?? item.endpoint}`,
-    });
-
-    await loadIntegrationRegistry();
-    setDispatchingDepartmentKey(null);
   };
 
   const alerts = [
@@ -556,10 +617,10 @@ function HRAdminDashboard() {
                 </p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <ActionChip label="Add Employee" icon={UserPlus} variant="outline" asLink="/employees" />
-                <ActionChip label="Assign Faculty" icon={School} variant="outline" asLink="/employees" />
-                <ActionChip label="Submit Payroll" icon={PesoSign} variant="outline" asLink="/payroll" />
-                <ActionChip label="Approve Leave" icon={Calendar} variant="outline" />
+                <ActionChip label="Add Employee" icon={UserPlus} variant="outline" onClick={() => void handleDashboardAction('Add Employee')} />
+                <ActionChip label="Assign Faculty" icon={School} variant="outline" onClick={() => void handleDashboardAction('Assign Faculty')} />
+                <ActionChip label="Submit Payroll" icon={PesoSign} variant="outline" onClick={() => void handleDashboardAction('Submit Payroll')} />
+                <ActionChip label="Approve Leave" icon={Calendar} variant="outline" onClick={() => void handleDashboardAction('Approve Leave')} />
               </div>
             </div>
 
@@ -622,7 +683,13 @@ function HRAdminDashboard() {
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {item.actions.map((action) => (
-                      <Button key={action} type="button" size="sm" variant="outline">
+                      <Button
+                        key={action}
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void handleDashboardAction(action)}
+                      >
                         {action}
                       </Button>
                     ))}
@@ -757,41 +824,41 @@ function HRAdminDashboard() {
         description="Operational modules for college HR administration, payroll coordination and compliance reporting."
       >
         <div className="mb-4 flex flex-wrap gap-2">
-          <ActionChip label="Add Employee" icon={UserPlus} variant="default" asLink="/employees" />
-          <ActionChip label="Assign Faculty" icon={School} variant="secondary" asLink="/employees" />
-          <ActionChip label="Submit Payroll" icon={PesoSign} variant="secondary" asLink="/payroll" />
-          <ActionChip label="Approve Leave" icon={Calendar} variant="secondary" />
+          <ActionChip label="Add Employee" icon={UserPlus} variant="default" onClick={() => void handleDashboardAction('Add Employee')} />
+          <ActionChip label="Assign Faculty" icon={School} variant="secondary" onClick={() => void handleDashboardAction('Assign Faculty')} />
+          <ActionChip label="Submit Payroll" icon={PesoSign} variant="secondary" onClick={() => void handleDashboardAction('Submit Payroll')} />
+          <ActionChip label="Approve Leave" icon={Calendar} variant="secondary" onClick={() => void handleDashboardAction('Approve Leave')} />
           <ActionChip
             label="Send to Cashier"
             icon={Landmark}
             variant="outline"
-            onClick={() => void handleDepartmentDispatch(integrations.find((item) => item.departmentKey === 'cashier') ?? fallbackIntegrations[0])}
+            onClick={() => void handleDashboardAction('Send to Cashier')}
             disabled={dispatchingDepartmentKey === 'cashier'}
           />
           <ActionChip
             label="Send to Clinic"
             icon={ShieldCheck}
             variant="outline"
-            onClick={() => void handleDepartmentDispatch(integrations.find((item) => item.departmentKey === 'clinic') ?? fallbackIntegrations.find((item) => item.departmentKey === 'clinic')!)}
+            onClick={() => void handleDashboardAction('Send to Clinic')}
             disabled={dispatchingDepartmentKey === 'clinic'}
           />
           <ActionChip
             label="Send to COMLAB"
             icon={MonitorSmartphone}
             variant="outline"
-            onClick={() => void handleDepartmentDispatch(integrations.find((item) => item.departmentKey === 'comlab') ?? fallbackIntegrations.find((item) => item.departmentKey === 'comlab')!)}
+            onClick={() => void handleDashboardAction('Send to COMLAB')}
             disabled={dispatchingDepartmentKey === 'comlab'}
           />
           <ActionChip
             label="Send to PMED"
             icon={Stethoscope}
             variant="outline"
-            onClick={() => void handleDepartmentDispatch(integrations.find((item) => item.departmentKey === 'pmed') ?? fallbackIntegrations.find((item) => item.departmentKey === 'pmed')!)}
+            onClick={() => void handleDashboardAction('Send to PMED')}
             disabled={dispatchingDepartmentKey === 'pmed'}
           />
-          <ActionChip label="Forward to Administration" icon={Building2} variant="outline" />
+          <ActionChip label="Forward to Administration" icon={Building2} variant="outline" onClick={() => void handleDashboardAction('Forward to Administration')} />
           <ActionChip label="Renew Contract" icon={FileClock} variant="outline" asLink="/employees/contracts" />
-          <ActionChip label="Start Clearance" icon={ClipboardList} variant="outline" />
+          <ActionChip label="Start Clearance" icon={ClipboardList} variant="outline" onClick={() => void handleDashboardAction('Start Clearance')} />
         </div>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
