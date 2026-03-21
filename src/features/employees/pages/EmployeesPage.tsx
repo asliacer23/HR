@@ -19,6 +19,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -674,34 +675,26 @@ export function EmployeesPage() {
           <p>Manage employee records</p>
         </div>
         <div className="flex gap-2">
-          {hiredApplicants.length > 0 ? (
+          {hiredApplicants.length > 0 && (
             <Button variant="outline" onClick={() => setIsConvertOpen(true)}>
               <UserPlus className="mr-2 h-4 w-4" />
               Convert Hired ({hiredApplicants.length})
             </Button>
-          ) : null}
-          <Button
-            className="btn-primary-gradient"
-            onClick={() => {
-              if (hiredApplicants.length > 0) {
-                setIsConvertOpen(true);
-                return;
-              }
-
-              setIsCreateOpen(true);
-            }}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Add Employee
-          </Button>
+          )}
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+            <DialogTrigger asChild>
+              <Button className="btn-primary-gradient">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Employee
+              </Button>
+            </DialogTrigger>
             <DialogContent className="max-w-lg">
               <DialogHeader>
                 <DialogTitle>Add New Employee</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  No hired applicants are currently available. Complete recruitment hiring first, then use Add Employee to open conversion.
+                  To add a new employee, first have them register as an applicant, apply for a position, and then hire them through the recruitment process.
                 </p>
                 <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
                   Understood
