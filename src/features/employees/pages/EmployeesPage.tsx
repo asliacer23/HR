@@ -152,18 +152,6 @@ export function EmployeesPage() {
     salary: '',
   });
 
-  const [userDepartmentId, setUserDepartmentId] = useState<string | null>(null);
-  const [deptFilter, setDeptFilter] = useState<string>('all');
-  const [isTransferOpen, setIsTransferOpen] = useState(false);
-  const [transferData, setTransferData] = useState({
-    employeeId: '',
-    employeeName: '',
-    currentDeptId: '',
-    currentDeptName: '',
-    newDeptId: '',
-    notes: '',
-  });
-
   const loadIntegrationDirectory = useCallback(async () => {
     setIsIntegrationLoading(true);
 
@@ -187,7 +175,7 @@ export function EmployeesPage() {
 
   const syncEmployeeEverywhere = async (
     employeeId: string,
-    reason: 'employee_created' | 'employee_updated' | 'employee_transferred'
+    reason: 'employee_created' | 'employee_updated'
   ) => {
     setSyncingEmployeeId(employeeId);
 
@@ -232,26 +220,11 @@ export function EmployeesPage() {
   const fetchData = useCallback(async () => {
     setIsLoading(true);
 
-    // Fetch current user's department if they are an employee
-    if (user?.id) {
-      const { data: currentUserEmp } = await supabase
-        .from('employees')
-        .select('department_id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      
-      if (currentUserEmp) {
-        setUserDepartmentId(currentUserEmp.department_id);
-      }
-    }
-
     // Fetch employees
-    let query = supabase
+    const { data: empData, error: empError } = await supabase
       .from('employees')
       .select('*, departments(name), positions(title)')
       .order('employee_number');
-
-    const { data: empData, error: empError } = await query;
 
     if (empError) {
       toast.error('Failed to fetch employees');
@@ -344,7 +317,7 @@ export function EmployeesPage() {
 
     await loadIntegrationDirectory();
     setIsLoading(false);
-  }, [user?.id, loadIntegrationDirectory]);
+  }, [loadIntegrationDirectory]);
 
   useEffect(() => {
     void fetchData();
@@ -415,13 +388,6 @@ export function EmployeesPage() {
     if (!applicant) return;
 
     const position = applicant.job_applications?.[0]?.job_postings?.positions;
-    const targetDeptId = position?.department_id || formData.department_id || null;
-
-    // Validate: HR Manager can only hire for their own department unless system admin
-    if (role !== 'system_admin' && userDepartmentId && targetDeptId !== userDepartmentId) {
-      toast.error('Unauthorized: You can only convert applicants for your own department.');
-      return;
-    }
 
     setIsSubmitting(true);
 
@@ -680,91 +646,11 @@ export function EmployeesPage() {
     setIsSubmitting(false);
   };
 
-  const handleTransferEmployee = async () => {
-    if (!transferData.newDeptId) {
-      toast.error('Please select a new department');
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      // Find a default position in the new department
-      const newPos = positions.find(p => p.department_id === transferData.newDeptId);
-
-      const { error: transferError } = await supabase
-        .from('employees')
-        .update({
-          department_id: transferData.newDeptId,
-          position_id: newPos?.id || null, // Transfer might require setting a new position
-        })
-        .eq('id', transferData.employeeId);
-
-      if (transferError) {
-        toast.error('Transfer failed: ' + transferError.message);
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Log transfer in audit logs (or a dedicated table if available)
-      await supabase.from('audit_logs').insert({
-        user_id: user?.id,
-        action: 'transfer_employee',
-        table_name: 'employees',
-        record_id: transferData.employeeId,
-        old_values: { department_id: transferData.currentDeptId },
-        new_values: { department_id: transferData.newDeptId, notes: transferData.notes },
-      });
-
-      const syncResult = await syncEmployeeEverywhere(transferData.employeeId, 'employee_transferred');
-
-      toast.success(`${transferData.employeeName} transferred successfully!`);
-      
-      if (syncResult.error) {
-        toast.error(`Transfer sync failed: ${syncResult.error}`);
-      }
-
-      setIsTransferOpen(false);
-      await fetchData();
-    } catch (error) {
-      toast.error('Error transferring employee');
-    }
-    setIsSubmitting(false);
-  };
-
-  const openTransferDialog = (emp: Employee) => {
-    setTransferData({
-      employeeId: emp.id,
-      employeeName: `${emp.profiles?.first_name} ${emp.profiles?.last_name}`,
-      currentDeptId: departments.find(d => d.name === emp.departments?.name)?.id || '',
-      currentDeptName: emp.departments?.name || 'Unknown',
-      newDeptId: '',
-      notes: '',
-    });
-    setIsTransferOpen(true);
-  };
-
-  const filteredEmployees = employees.filter(emp => {
-    const matchesSearch = 
-      emp.employee_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      emp.profiles?.first_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      emp.profiles?.last_name?.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    // Department filtering logic
-    const empDeptId = departments.find(d => d.name === emp.departments?.name)?.id;
-    
-    // 1. Role-based restriction: Non-admins can only see their own department
-    const isSystemAdmin = role === 'system_admin';
-    const isHRAdmin = role === 'hr_admin';
-    
-    if (!isSystemAdmin && userDepartmentId) {
-      if (empDeptId !== userDepartmentId) return false;
-    }
-
-    // 2. UI Filter
-    if (deptFilter !== 'all' && empDeptId !== deptFilter) return false;
-
-    return matchesSearch;
-  });
+  const filteredEmployees = employees.filter(emp =>
+    emp.employee_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    emp.profiles?.first_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    emp.profiles?.last_name?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const getStatusColor = (status: EmploymentStatus) => {
     switch (status) {
@@ -779,19 +665,7 @@ export function EmployeesPage() {
   const filteredPositions = formData.department_id
     ? positions.filter(p => p.department_id === formData.department_id)
     : positions;
-  
-  const editFilteredPositions = editFormData.department_id
-    ? positions.filter(p => p.department_id === editFormData.department_id)
-    : positions;
-
   const selectedEmployeeIntegration = selectedEmployee ? integrationDirectory[selectedEmployee.id] : null;
-
-  // Can the current user edit this employee?
-  const canEditEmployee = (emp: Employee) => {
-    if (role === 'system_admin') return true;
-    const empDeptId = departments.find(d => d.name === emp.departments?.name)?.id;
-    return empDeptId === userDepartmentId;
-  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -831,7 +705,7 @@ export function EmployeesPage() {
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-4">
+      <div className="flex items-center gap-4">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -841,20 +715,6 @@ export function EmployeesPage() {
             className="pl-9"
           />
         </div>
-
-        {(role === 'system_admin' || !userDepartmentId) && (
-          <Select value={deptFilter} onValueChange={setDeptFilter}>
-            <SelectTrigger className="w-full sm:w-[200px]">
-              <SelectValue placeholder="All Departments" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Departments</SelectItem>
-              {departments.map((dept) => (
-                <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
       </div>
 
       <div className="card-elevated overflow-hidden">
@@ -868,7 +728,7 @@ export function EmployeesPage() {
               <th>Type</th>
               <th>Status</th>
               <th>Integration</th>
-              <th className="w-32">Actions</th>
+              <th className="w-24">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -892,11 +752,7 @@ export function EmployeesPage() {
                     {emp.profiles?.first_name} {emp.profiles?.last_name}
                   </td>
                   <td>{emp.positions?.title || '-'}</td>
-                  <td>
-                    <Badge variant="outline" className="font-normal">
-                      {emp.departments?.name || '-'}
-                    </Badge>
-                  </td>
+                  <td>{emp.departments?.name || '-'}</td>
                   <td>{EMPLOYEE_TYPE_LABELS[emp.employee_type]}</td>
                   <td>
                     <Badge className={getStatusColor(emp.employment_status)}>
@@ -909,26 +765,13 @@ export function EmployeesPage() {
                     </Badge>
                   </td>
                   <td>
-                    <div className="flex gap-1">
-                      <Button 
-                        variant="ghost" 
-                        size="icon"
-                        onClick={() => openViewDialog(emp)}
-                        title="View/Edit"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      {(role === 'system_admin' || role === 'hr_admin') && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => openTransferDialog(emp)}
-                          title="Transfer Department"
-                        >
-                          <Send className="h-4 w-4 rotate-45" />
-                        </Button>
-                      )}
-                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="icon"
+                      onClick={() => openViewDialog(emp)}
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Button>
                   </td>
                 </tr>
               ))
@@ -992,7 +835,6 @@ export function EmployeesPage() {
                 <Label>Department</Label>
                 <Select
                   value={formData.department_id}
-                  disabled={!!selectedApplicant} // Strict assignment from job posting
                   onValueChange={(v) => setFormData({ ...formData, department_id: v, position_id: '' })}
                 >
                   <SelectTrigger>
@@ -1009,7 +851,6 @@ export function EmployeesPage() {
                 <Label>Position</Label>
                 <Select
                   value={formData.position_id}
-                  disabled={!!selectedApplicant} // Strict assignment from job posting
                   onValueChange={(v) => setFormData({ ...formData, position_id: v })}
                 >
                   <SelectTrigger>
@@ -1073,68 +914,9 @@ export function EmployeesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Transfer Employee Dialog */}
-      <Dialog open={isTransferOpen} onOpenChange={setIsTransferOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Transfer Employee Department</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label className="text-xs text-muted-foreground">Employee</Label>
-              <p className="font-medium">{transferData.employeeName}</p>
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Current Department</Label>
-              <p className="font-medium">{transferData.currentDeptName}</p>
-            </div>
-            <div className="space-y-2">
-              <Label>New Department</Label>
-              <Select
-                value={transferData.newDeptId}
-                onValueChange={(v) => setTransferData({ ...transferData, newDeptId: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select new department" />
-                </SelectTrigger>
-                <SelectContent>
-                  {departments
-                    .filter(d => d.id !== transferData.currentDeptId)
-                    .map((dept) => (
-                      <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Transfer Notes</Label>
-              <Input
-                placeholder="Reason for transfer..."
-                value={transferData.notes}
-                onChange={(e) => setTransferData({ ...transferData, notes: e.target.value })}
-              />
-            </div>
-            <Button
-              onClick={handleTransferEmployee}
-              disabled={!transferData.newDeptId || isSubmitting}
-              className="w-full btn-primary-gradient"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Transferring...
-                </>
-              ) : (
-                'Confirm Transfer'
-              )}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {/* View/Edit Employee Dialog */}
       <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Employee Details - {selectedEmployee?.profiles?.first_name} {selectedEmployee?.profiles?.last_name}</DialogTitle>
           </DialogHeader>
@@ -1168,7 +950,6 @@ export function EmployeesPage() {
                 </div>
               </div>
 
-              {/* Integration Section */}
               <div className="space-y-4 rounded-lg border border-border/60 p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="space-y-2">
@@ -1181,13 +962,19 @@ export function EmployeesPage() {
 
                     {selectedEmployeeIntegration ? (
                       <div className="space-y-1 text-sm text-muted-foreground">
-                        <p>Connected systems: {selectedEmployeeIntegration.connected_system_count}</p>
-                        <p>Last dispatched: {formatTimestamp(selectedEmployeeIntegration.last_dispatched_at)}</p>
-                        <p>Last synced: {formatTimestamp(selectedEmployeeIntegration.last_synced_at)}</p>
+                        <p>
+                          Connected systems: {selectedEmployeeIntegration.connected_system_count}
+                        </p>
+                        <p>
+                          Last dispatched: {formatTimestamp(selectedEmployeeIntegration.last_dispatched_at)}
+                        </p>
+                        <p>
+                          Last synced: {formatTimestamp(selectedEmployeeIntegration.last_synced_at)}
+                        </p>
                       </div>
                     ) : (
                       <p className="text-sm text-muted-foreground">
-                        This employee is not yet integration-ready.
+                        This employee is not yet integration-ready. Department mapping or connected targets may still be missing.
                       </p>
                     )}
                   </div>
@@ -1210,23 +997,60 @@ export function EmployeesPage() {
                     Sync Connected Departments
                   </Button>
                 </div>
+
+                {selectedEmployeeIntegration && selectedEmployeeIntegration.connected_systems.length > 0 ? (
+                  <div className="space-y-3">
+                    {selectedEmployeeIntegration.connected_systems.map((system) => {
+                      const targetKey = `${selectedEmployee.id}:${system.department_key}`;
+
+                      return (
+                        <div
+                          key={system.department_key}
+                          className="flex flex-col gap-3 rounded-lg border border-border/60 p-3 sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <div className="space-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-medium">{system.department_name}</p>
+                              {system.is_primary ? <Badge variant="outline">Primary</Badge> : null}
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              Default event: {system.default_event_code}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {system.available_routes.map((route) => route.event_code).join(', ')}
+                            </p>
+                          </div>
+
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void handleManualTargetSync(system)}
+                            disabled={syncingTargetKey === targetKey}
+                          >
+                            {syncingTargetKey === targetKey ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <Send className="mr-2 h-4 w-4" />
+                            )}
+                            Send to {system.department_name}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
               </div>
 
               {/* Edit Fields */}
               <div className="space-y-4 border-t pt-4">
                 <h3 className="font-semibold">Update Employee Information</h3>
-                {!canEditEmployee(selectedEmployee) && (
-                  <p className="text-sm text-amber-600 font-medium">
-                    Note: You can only edit employees within your own department.
-                  </p>
-                )}
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Employment Status</Label>
                     <Select
                       value={editFormData.employment_status}
-                      disabled={!canEditEmployee(selectedEmployee)}
                       onValueChange={(v) => setEditFormData({ ...editFormData, employment_status: v as EmploymentStatus })}
                     >
                       <SelectTrigger>
@@ -1243,7 +1067,6 @@ export function EmployeesPage() {
                     <Label>Employee Type</Label>
                     <Select
                       value={editFormData.employee_type}
-                      disabled={!canEditEmployee(selectedEmployee)}
                       onValueChange={(v) => setEditFormData({ ...editFormData, employee_type: v as EmployeeType })}
                     >
                       <SelectTrigger>
@@ -1263,8 +1086,7 @@ export function EmployeesPage() {
                     <Label>Department</Label>
                     <Select
                       value={editFormData.department_id}
-                      disabled={!canEditEmployee(selectedEmployee)}
-                      onValueChange={(v) => setEditFormData({ ...editFormData, department_id: v, position_id: '' })}
+                      onValueChange={(v) => setEditFormData({ ...editFormData, department_id: v })}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select department" />
@@ -1280,14 +1102,13 @@ export function EmployeesPage() {
                     <Label>Position</Label>
                     <Select
                       value={editFormData.position_id}
-                      disabled={!canEditEmployee(selectedEmployee)}
                       onValueChange={(v) => setEditFormData({ ...editFormData, position_id: v })}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select position" />
                       </SelectTrigger>
                       <SelectContent>
-                        {editFilteredPositions.map((pos) => (
+                        {positions.map((pos) => (
                           <SelectItem key={pos.id} value={pos.id}>{pos.title}</SelectItem>
                         ))}
                       </SelectContent>
@@ -1300,7 +1121,6 @@ export function EmployeesPage() {
                   <Input
                     type="date"
                     value={editFormData.hire_date}
-                    disabled={!canEditEmployee(selectedEmployee)}
                     onChange={(e) => setEditFormData({ ...editFormData, hire_date: e.target.value })}
                   />
                 </div>
@@ -1311,24 +1131,22 @@ export function EmployeesPage() {
                     onClick={() => setIsViewOpen(false)}
                     disabled={isSubmitting}
                   >
-                    {canEditEmployee(selectedEmployee) ? 'Cancel' : 'Close'}
+                    Cancel
                   </Button>
-                  {canEditEmployee(selectedEmployee) && (
-                    <Button
-                      onClick={handleUpdateEmployee}
-                      disabled={isSubmitting}
-                      className="btn-primary-gradient"
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Saving...
-                        </>
-                      ) : (
-                        'Save Changes'
-                      )}
-                    </Button>
-                  )}
+                  <Button
+                    onClick={handleUpdateEmployee}
+                    disabled={isSubmitting}
+                    className="btn-primary-gradient"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      'Save Changes'
+                    )}
+                  </Button>
                 </div>
               </div>
             </div>
