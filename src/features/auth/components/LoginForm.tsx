@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,20 +17,21 @@ export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const { signIn } = useAuth();
-  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
-    const { error } = await signIn(email, password);
-    
-    if (error) {
-      toast.error(error.message);
+    try {
+      const { error } = await signIn(email, password);
+
+      if (error) {
+        toast.error(error.message);
+      } else {
+        toast.success('Login successful!');
+      }
+    } finally {
       setIsLoading(false);
-    } else {
-      toast.success('Login successful!');
-      navigate('/dashboard');
     }
   };
 

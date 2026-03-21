@@ -202,6 +202,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [initializeAuth]);
 
+  const normalizeSignInError = (error: unknown) => {
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'Unable to reach the authentication service right now.';
+
+    if (/failed to fetch|networkerror|load failed|cors/i.test(message)) {
+      return new Error(
+        'Unable to reach Supabase authentication right now. Check your connection, Supabase project status, and local origin settings, then try again.'
+      );
+    }
+
+    return new Error(message);
+  };
+
   const signIn = async (email: string, password: string) => {
     if (!isSupabaseConfigured) {
       return {
@@ -210,8 +225,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     console.log('[Auth] Signing in...');
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error };
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+      if (error) {
+        return { error: normalizeSignInError(error) };
+      }
+
+      if (!data.session?.user) {
+        return {
+          error: new Error('Sign-in did not establish a session. Please try again.'),
+        };
+      }
+
+      return { error: null };
+    } catch (err) {
+      console.error('[Auth] Sign in error:', err);
+      return { error: normalizeSignInError(err) };
+    }
   };
 
   const signOut = async () => {

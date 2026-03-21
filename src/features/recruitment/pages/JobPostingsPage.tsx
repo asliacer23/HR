@@ -21,6 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { useAuth } from '@/features/auth/context/AuthContext';
 import { JobPostingForm } from '../components/JobPostingForm';
 import { JobPostingDetail } from '../components/JobPostingDetail';
 import {
@@ -34,6 +35,7 @@ import {
 } from '@/features/recruitment/services/jobPostingsService';
 
 export function JobPostingsPage() {
+  const { authReady, isAuthenticated } = useAuth();
   const [jobs, setJobs] = useState<JobPosting[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -46,8 +48,18 @@ export function JobPostingsPage() {
   const [jobToDelete, setJobToDelete] = useState<JobPosting | null>(null);
 
   useEffect(() => {
+    if (!authReady) {
+      return;
+    }
+
+    if (!isAuthenticated) {
+      setJobs([]);
+      setIsLoading(false);
+      return;
+    }
+
     loadJobs();
-  }, []);
+  }, [authReady, isAuthenticated]);
 
   const loadJobs = async () => {
     setIsLoading(true);
