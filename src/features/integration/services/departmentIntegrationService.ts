@@ -633,8 +633,61 @@ async function fetchIntegrationReadyEmployeesFromTables({
     rolesByUserId.set(role.user_id, current);
   }
 
-  const mappings: IntegrationMappingRecord[] = [];
-  const integrationProfiles: EmployeeIntegrationProfileRecord[] = [];
+  let mappings: IntegrationMappingRecord[] = [];
+  let integrationProfiles: EmployeeIntegrationProfileRecord[] = [];
+
+  const { data: publicMappings, error: publicMappingsError } = await supabase
+    .from('department_integration_mappings')
+    .select(
+      'department_id, integration_department_key, relationship_kind, is_primary, supports_employee_sync, supports_admin_sync, default_event_code'
+    );
+
+  if (publicMappingsError) {
+    const { data: hrMappings, error: hrMappingsError } = await supabase
+      .schema('hr')
+      .from('department_integration_mappings')
+      .select(
+        'department_id, integration_department_key, relationship_kind, is_primary, supports_employee_sync, supports_admin_sync, default_event_code'
+      );
+
+    if (hrMappingsError) {
+      throw hrMappingsError;
+    }
+
+    mappings = (hrMappings ?? []) as IntegrationMappingRecord[];
+  } else {
+    mappings = (publicMappings ?? []) as IntegrationMappingRecord[];
+  }
+
+  const { data: publicIntegrationProfiles, error: publicIntegrationProfilesError } = await supabase
+    .from('employee_integration_profiles')
+    .select(
+      'employee_id, primary_integration_department_key, integration_status, sync_enabled, allow_admin_sync, allow_department_sync, external_directory_id, last_target_department_key, last_event_id, last_dispatched_at, last_synced_at, metadata, created_at, updated_at'
+    );
+
+  if (publicIntegrationProfilesError) {
+    const { data: hrIntegrationProfiles, error: hrIntegrationProfilesError } = await supabase
+      .schema('hr')
+      .from('employee_integration_profiles')
+      .select(
+        'employee_id, primary_integration_department_key, integration_status, sync_enabled, allow_admin_sync, allow_department_sync, external_directory_id, last_target_department_key, last_event_id, last_dispatched_at, last_synced_at, metadata, created_at, updated_at'
+      );
+
+    if (hrIntegrationProfilesError) {
+      throw hrIntegrationProfilesError;
+    }
+
+    integrationProfiles = (hrIntegrationProfiles ?? []).map((profile) => ({
+      ...(profile as EmployeeIntegrationProfileRecord),
+      metadata: asObject((profile as Record<string, unknown>).metadata) ?? {},
+    }));
+  } else {
+    integrationProfiles = (publicIntegrationProfiles ?? []).map((profile) => ({
+      ...(profile as EmployeeIntegrationProfileRecord),
+      metadata: asObject((profile as Record<string, unknown>).metadata) ?? {},
+    }));
+  }
+
   const mappingsByDepartment = groupMappingsByDepartment(mappings);
   const integrationProfileByEmployeeId = new Map(
     integrationProfiles.map((profile) => [profile.employee_id, profile])
