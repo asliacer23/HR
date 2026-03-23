@@ -14,6 +14,7 @@ import {
   type CreateJobPostingInput,
 } from '@/features/recruitment/services/jobPostingsService';
 import { supabase } from '@/integrations/supabase/client';
+import { hrStaffIntegrationRoleLabel } from '../../../../../shared/hrStaffIntegrationRoles';
 
 const METADATA_JOB_KEY = 'hr_auto_job_posting_id';
 
@@ -45,8 +46,8 @@ function parseRequestedCount(notes: string | null): number {
   return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
-function roleLabel(role: 'doctor' | 'nurse'): string {
-  return role === 'doctor' ? 'Doctor' : 'Nurse';
+export function hiringRequestRoleLabel(role: string): string {
+  return hrStaffIntegrationRoleLabel(role);
 }
 
 type PositionRow = {
@@ -61,7 +62,7 @@ export function pickPositionForHiringRequest(
   positions: PositionRow[],
   row: DepartmentHiringRequestRow
 ): PositionRow | null {
-  const role = row.role_type;
+  const role = row.role_type.toLowerCase();
   const dept = (row.department_name || '').toLowerCase();
   let best: { row: PositionRow; score: number } | null = null;
   for (const p of positions) {
@@ -70,9 +71,12 @@ export function pickPositionForHiringRequest(
     let score = 0;
     if (role === 'nurse' && t.includes('nurse')) score += 10;
     if (role === 'doctor' && (t.includes('doctor') || t.includes('physician'))) score += 10;
+    if (role === 'medical_officer' && (t.includes('medical') || t.includes('officer'))) score += 10;
+    if (role === 'health_aide' && (t.includes('aide') || t.includes('health'))) score += 10;
     if (role === 'doctor' && t.includes('nurse')) score -= 6;
     if (role === 'nurse' && (t.includes('doctor') || t.includes('physician'))) score -= 4;
     if (dept && d && (d.includes(dept.slice(0, 8)) || dept.includes(d.slice(0, 8)))) score += 5;
+    if (dept.includes('pmed') && (d.includes('pmed') || d.includes('medical'))) score += 4;
     if ((role === 'doctor' || role === 'nurse') && d.includes('clinic')) score += 3;
     if (score > (best?.score ?? -1)) best = { row: p, score };
   }
@@ -84,7 +88,7 @@ export function buildJobPostingInputFromHiringRequest(
   position: PositionRow | null
 ): CreateJobPostingInput {
   const count = parseRequestedCount(row.request_notes);
-  const role = roleLabel(row.role_type);
+  const role = hiringRequestRoleLabel(row.role_type);
   const dept = row.department_name || 'Clinic';
   const ref = row.request_reference;
   const by = row.requested_by || 'Requesting department';
@@ -98,7 +102,7 @@ export function buildJobPostingInputFromHiringRequest(
       : `${role} — ${dept} · ${ref}`;
 
   const description = [
-    `Staffing need raised by the Clinic / department and tracked in HR as ${ref}.`,
+    `Staffing need raised by the requesting department and tracked in HR as ${ref}.`,
     '',
     `Department / unit: ${dept}`,
     `Role: ${role}${count > 1 ? ` × ${count}` : ''}`,

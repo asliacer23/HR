@@ -10,10 +10,13 @@ import {
   postEmployeeRequest,
   rejectEmployeeRequest,
 } from '@/features/integration/services/employeeRequestService';
+import {
+  CROSS_DEPARTMENT_JOB_POSITIONS,
+  formatCrossDepartmentPositionLabel,
+} from '@/features/integration/constants/crossDepartmentJobPositions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -127,6 +130,11 @@ export function EmployeeRequestsPage() {
   const handleSubmitRequest = async (event: React.FormEvent) => {
     event.preventDefault();
 
+    if (!formState.position.trim()) {
+      toast.error('Please select a position.');
+      return;
+    }
+
     const { data, error } = await postEmployeeRequest({
       department: formState.department,
       position: formState.position.trim(),
@@ -215,18 +223,33 @@ export function EmployeeRequestsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Position</Label>
-                  <Input
-                    value={formState.position}
-                    onChange={(event) => setFormState((prev) => ({ ...prev, position: event.target.value }))}
-                    required
-                  />
+                  <Select
+                    value={formState.position || undefined}
+                    onValueChange={(value) => setFormState((prev) => ({ ...prev, position: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a position" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CROSS_DEPARTMENT_JOB_POSITIONS.map((row) => {
+                        const label = formatCrossDepartmentPositionLabel(row);
+                        return (
+                          <SelectItem key={label} value={label}>
+                            {label}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label>Reason</Label>
                   <Textarea
                     value={formState.reason}
                     onChange={(event) => setFormState((prev) => ({ ...prev, reason: event.target.value }))}
+                    placeholder="Outline the main responsibilities for this position..."
                     required
+                    rows={4}
                   />
                 </div>
                 <div className="space-y-2">

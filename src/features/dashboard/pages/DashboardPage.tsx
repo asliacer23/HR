@@ -1107,6 +1107,15 @@ function EmployeeDashboard() {
         <p>View your employment information and records</p>
       </div>
 
+      <div className="flex flex-wrap gap-3">
+        <Button asChild className="btn-primary-gradient">
+          <Link to="/hr/employee-requests">
+            <UserPlus className="mr-2 h-4 w-4" />
+            Request an employee from HR
+          </Link>
+        </Button>
+      </div>
+
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
         <StatCard title="Training Completed" value={stats.trainingCompleted} icon={CheckCircle} />
         <StatCard title="Pending Training" value={stats.pendingTraining} icon={GraduationCap} />

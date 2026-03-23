@@ -54,7 +54,10 @@ import {
   type DepartmentHiringRequestRow,
   type DepartmentHiringRequestStatus,
 } from '@/features/recruitment/services/departmentHiringRequestsService';
-import { createJobPostingForHiringRequestIfNeeded } from '@/features/recruitment/services/hiringRequestJobPosting';
+import {
+  createJobPostingForHiringRequestIfNeeded,
+  hiringRequestRoleLabel,
+} from '@/features/recruitment/services/hiringRequestJobPosting';
 
 const REQUEST_MODAL_PAGE_SIZE = 8;
 
@@ -311,7 +314,7 @@ export function JobPostingsPage() {
         new CustomEvent('hr:department-request', {
           detail: {
             title: `Urgent request: ${item.department_name}`,
-            detail: `${item.staff_name} (${item.role_type}) is ${statusLabelMap[item.request_status] || item.request_status}`,
+            detail: `${item.staff_name} (${hiringRequestRoleLabel(item.role_type)}) is ${statusLabelMap[item.request_status] || item.request_status}`,
           },
         })
       );
@@ -619,10 +622,10 @@ export function JobPostingsPage() {
                 >
                   <div className="min-w-0">
                     <p className="font-medium truncate">
-                      {item.department_name} - {item.staff_name} ({item.role_type})
+                      {item.department_name} - {item.staff_name} ({hiringRequestRoleLabel(item.role_type)})
                     </p>
                     <p className="text-xs text-muted-foreground truncate">
-                      Ref {item.request_reference} · Requested by {item.requested_by || 'Clinic'} · {new Date(item.created_at).toLocaleString()}
+                      Ref {item.request_reference} · Requested by {item.requested_by || 'Department'} · {new Date(item.created_at).toLocaleString()}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">

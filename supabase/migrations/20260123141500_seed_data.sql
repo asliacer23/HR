@@ -125,7 +125,9 @@ BEGIN
         ('650e8400-e29b-41d4-a716-446655440006'::uuid, '550e8400-e29b-41d4-a716-446655440006'::uuid, 'PMED Coordinator', 'Tracks pre-employment medical referrals, physical exam results, and PMED endorsements.', 28000.00, 38000.00, true),
         ('650e8400-e29b-41d4-a716-446655440007'::uuid, '550e8400-e29b-41d4-a716-446655440007'::uuid, 'Clinic Nurse', 'Manages employee health clearances, fit-to-work monitoring, and clinic referrals.', 30000.00, 41000.00, true),
         ('650e8400-e29b-41d4-a716-446655440008'::uuid, '550e8400-e29b-41d4-a716-446655440008'::uuid, 'Guidance Counselor', 'Supports employee welfare cases, counseling coordination, and guidance clearance routing.', 29000.00, 39000.00, true),
-        ('650e8400-e29b-41d4-a716-446655440009'::uuid, '550e8400-e29b-41d4-a716-446655440004'::uuid, 'Senior High School English Instructor', 'Handles faculty teaching load in the Senior High School department.', 27000.00, 37000.00, true)
+        ('650e8400-e29b-41d4-a716-446655440009'::uuid, '550e8400-e29b-41d4-a716-446655440004'::uuid, 'Senior High School English Instructor', 'Handles faculty teaching load in the Senior High School department.', 27000.00, 37000.00, true),
+        ('650e8400-e29b-41d4-a716-446655440010'::uuid, '550e8400-e29b-41d4-a716-446655440004'::uuid, 'Business Administration Professor', 'Teaches business administration subjects and supports academic programs under school administration.', 28000.00, 42000.00, true),
+        ('650e8400-e29b-41d4-a716-446655440011'::uuid, '550e8400-e29b-41d4-a716-446655440004'::uuid, 'College Programming Instructor', 'Delivers programming and computer science instruction aligned with the college curriculum.', 27000.00, 40000.00, true)
     ON CONFLICT (id) DO UPDATE
     SET
         department_id = EXCLUDED.department_id,

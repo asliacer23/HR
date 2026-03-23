@@ -22,7 +22,8 @@ export interface DepartmentHiringRequestRow {
   id: number;
   request_reference: string;
   staff_name: string;
-  role_type: 'doctor' | 'nurse';
+  /** Role code from hr_staff_directory (e.g. doctor, nurse, medical_officer, health_aide). */
+  role_type: string;
   department_name: string;
   request_status: DepartmentHiringRequestStatus;
   requested_by: string | null;
@@ -65,13 +66,13 @@ type StaffRow = {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function buildRow(req: RequestRow, staff: StaffRow | undefined): DepartmentHiringRequestRow {
-  const role = (staff?.role_type || 'nurse').toLowerCase();
+  const roleType = String(staff?.role_type || 'unknown').trim().toLowerCase() || 'unknown';
   const meta = req.metadata;
   return {
     id: req.id,
     request_reference: req.request_reference,
     staff_name: staff?.full_name || 'Unknown Staff',
-    role_type: role === 'doctor' ? 'doctor' : 'nurse',
+    role_type: roleType,
     department_name: staff?.department_name || 'Unknown Department',
     request_status: req.request_status as DepartmentHiringRequestStatus,
     requested_by: req.requested_by,
