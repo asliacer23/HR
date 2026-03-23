@@ -29,22 +29,41 @@ export interface CreateJobPostingInput {
   is_active?: boolean;
 }
 
+export interface PaginationParams {
+  page: number;
+  pageSize: number;
+  searchQuery?: string;
+}
+
 // Fetch all job postings
-export async function fetchJobPostings() {
+export async function fetchJobPostings(params?: PaginationParams) {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('job_postings')
       .select(`
         *,
         positions(id, title, department_id, departments(name))
-      `)
-      .order('created_at', { ascending: false });
+      `, { count: 'exact' });
+
+    if (params?.searchQuery) {
+      query = query.ilike('title', `%${params.searchQuery}%`);
+    }
+
+    query = query.order('created_at', { ascending: false });
+
+    if (params) {
+      const from = (params.page - 1) * params.pageSize;
+      const to = from + params.pageSize - 1;
+      query = query.range(from, to);
+    }
+
+    const { data, error, count } = await query;
 
     if (error) throw error;
-    return { data: data || [], error: null };
+    return { data: data || [], error: null, totalCount: count || 0 };
   } catch (error) {
     console.error('Error fetching job postings:', error);
-    return { data: [], error: error instanceof Error ? error.message : 'Failed to fetch job postings' };
+    return { data: [], error: error instanceof Error ? error.message : 'Failed to fetch job postings', totalCount: 0 };
   }
 }
 
@@ -186,6 +205,8 @@ export async function fetchPositions() {
         id,
         title,
         department_id,
+        min_salary,
+        max_salary,
         departments(name)
       `)
       .eq('is_active', true)

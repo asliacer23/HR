@@ -24,12 +24,31 @@ export interface EmployeeWithDetails extends Employee {
   };
 }
 
-export async function fetchEmployees() {
+export interface PaginationParams {
+  page?: number;
+  pageSize?: number;
+}
+
+export interface PaginatedResult<T> {
+  data: T[];
+  totalCount: number;
+  error: string | null;
+}
+
+export async function fetchEmployees(pagination?: PaginationParams): Promise<PaginatedResult<EmployeeWithDetails>> {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('employees')
-      .select('id, employee_number, position_id, department_id, employee_type, hire_date, employment_status, supervisor_id, user_id, created_at, updated_at, departments (name), positions (title)')
+      .select('id, employee_number, position_id, department_id, employee_type, hire_date, employment_status, supervisor_id, user_id, created_at, updated_at, departments (name), positions (title)', { count: 'exact' })
       .order('created_at', { ascending: false });
+
+    if (pagination?.page && pagination?.pageSize) {
+      const from = (pagination.page - 1) * pagination.pageSize;
+      const to = from + pagination.pageSize - 1;
+      query = query.range(from, to);
+    }
+
+    const { data, error, count } = await query;
 
     if (error) throw error;
 
@@ -51,9 +70,9 @@ export async function fetchEmployees() {
       profiles: profiles.find(p => p.user_id === emp.user_id),
     })) as unknown as EmployeeWithDetails[];
 
-    return { data: employeesWithProfiles, error: null };
+    return { data: employeesWithProfiles, totalCount: count ?? 0, error: null };
   } catch (error) {
-    return { data: [] as EmployeeWithDetails[], error: String(error) };
+    return { data: [] as EmployeeWithDetails[], totalCount: 0, error: String(error) };
   }
 }
 
@@ -89,14 +108,22 @@ export async function fetchEmployeeById(id: string) {
   }
 }
 
-export async function searchEmployees(searchTerm: string) {
+export async function searchEmployees(searchTerm: string, pagination?: PaginationParams): Promise<PaginatedResult<EmployeeWithDetails>> {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('employees')
-      .select('id, employee_number, position_id, department_id, employee_type, hire_date, employment_status, supervisor_id, user_id, created_at, updated_at, departments (name), positions (title)')
+      .select('id, employee_number, position_id, department_id, employee_type, hire_date, employment_status, supervisor_id, user_id, created_at, updated_at, departments (name), positions (title)', { count: 'exact' })
       .or(`employee_number.ilike.%${searchTerm}%`)
       .order('created_at', { ascending: false });
 
+    if (pagination?.page && pagination?.pageSize) {
+      const from = (pagination.page - 1) * pagination.pageSize;
+      const to = from + pagination.pageSize - 1;
+      query = query.range(from, to);
+    }
+
+    const { data, error, count } = await query;
+
     if (error) throw error;
 
     // Fetch user profiles separately
@@ -117,19 +144,27 @@ export async function searchEmployees(searchTerm: string) {
       profiles: profiles.find(p => p.user_id === emp.user_id),
     })) as unknown as EmployeeWithDetails[];
 
-    return { data: employeesWithProfiles, error: null };
+    return { data: employeesWithProfiles, totalCount: count ?? 0, error: null };
   } catch (error) {
-    return { data: [] as EmployeeWithDetails[], error: String(error) };
+    return { data: [] as EmployeeWithDetails[], totalCount: 0, error: String(error) };
   }
 }
 
-export async function fetchEmployeesByDepartment(departmentId: string) {
+export async function fetchEmployeesByDepartment(departmentId: string, pagination?: PaginationParams): Promise<PaginatedResult<EmployeeWithDetails>> {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('employees')
-      .select('id, employee_number, position_id, department_id, employee_type, hire_date, employment_status, supervisor_id, user_id, created_at, updated_at, departments (name), positions (title)')
+      .select('id, employee_number, position_id, department_id, employee_type, hire_date, employment_status, supervisor_id, user_id, created_at, updated_at, departments (name), positions (title)', { count: 'exact' })
       .eq('department_id', departmentId)
       .order('created_at', { ascending: false });
+
+    if (pagination?.page && pagination?.pageSize) {
+      const from = (pagination.page - 1) * pagination.pageSize;
+      const to = from + pagination.pageSize - 1;
+      query = query.range(from, to);
+    }
+
+    const { data, error, count } = await query;
 
     if (error) throw error;
 
@@ -151,8 +186,8 @@ export async function fetchEmployeesByDepartment(departmentId: string) {
       profiles: profiles.find(p => p.user_id === emp.user_id),
     })) as unknown as EmployeeWithDetails[];
 
-    return { data: employeesWithProfiles, error: null };
+    return { data: employeesWithProfiles, totalCount: count ?? 0, error: null };
   } catch (error) {
-    return { data: [] as EmployeeWithDetails[], error: String(error) };
+    return { data: [] as EmployeeWithDetails[], totalCount: 0, error: String(error) };
   }
 }

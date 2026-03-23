@@ -1,10 +1,10 @@
-﻿import { formatCurrencyPHP } from '@/lib/utils';
-import { useState, useEffect } from 'react';
+import { formatCurrencyPHP } from '@/lib/utils';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Search, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Position {
@@ -23,28 +23,56 @@ export function PositionsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    fetchPositions();
-  }, []);
+  // Pagination State
+  const PAGE_SIZE = 10;
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
 
-  const fetchPositions = async () => {
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery.trim());
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
+
+  const fetchPositions = useCallback(async () => {
     setIsLoading(true);
-    const { data, error } = await supabase
+
+    let query = supabase
       .from('positions')
-      .select('*, departments(name)')
-      .order('title');
+      .select('*, departments(name)', { count: 'exact' });
+
+    if (debouncedSearchQuery) {
+      query = query.ilike('title', `%${debouncedSearchQuery}%`);
+    }
+
+    const from = (page - 1) * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+
+    const { data, error, count } = await query
+      .order('title')
+      .range(from, to);
+
+    setTotalCount(count || 0);
 
     if (error) {
       toast.error('Failed to fetch positions');
     } else {
-      setPositions(data || []);
+      setPositions((data as unknown as Position[]) || []);
     }
     setIsLoading(false);
-  };
+  }, [debouncedSearchQuery, page]);
 
-  const filteredPositions = positions.filter(pos =>
-    pos.title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  useEffect(() => {
+    void fetchPositions();
+  }, [fetchPositions]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearchQuery]);
+
+  const filteredPositions = positions; // server side filtering
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -123,6 +151,50 @@ export function PositionsPage() {
             )}
           </tbody>
         </table>
+        {totalCount > 0 && (
+          <div className="p-4 border-t flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">
+              Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalCount)} of {totalCount}
+            </span>
+            <div className="flex flex-wrap items-center gap-1">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setPage(1)}
+                disabled={page === 1 || isLoading}
+              >
+                <ChevronsLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1 || isLoading}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="px-3 text-sm font-medium">
+                Page {page} of {Math.ceil(totalCount / PAGE_SIZE) || 1}
+              </span>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setPage((p) => Math.min(Math.ceil(totalCount / PAGE_SIZE) || 1, p + 1))}
+                disabled={page === (Math.ceil(totalCount / PAGE_SIZE) || 1) || isLoading}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setPage(Math.ceil(totalCount / PAGE_SIZE) || 1)}
+                disabled={page === (Math.ceil(totalCount / PAGE_SIZE) || 1) || isLoading}
+              >
+                <ChevronsRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

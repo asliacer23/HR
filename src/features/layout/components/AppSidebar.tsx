@@ -1,18 +1,14 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { ChevronDown, LogOut } from 'lucide-react';
-import { useState } from 'react';
+import { LogOut } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { getNavigationForRole, NavGroup } from '../config/navigation';
 import { ROLE_LABELS } from '@/lib/constants';
 import logo from '@/assets/logo.png';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 interface AppSidebarProps {
   isOpen?: boolean;
@@ -23,6 +19,7 @@ export function AppSidebar({ isOpen = false, onOpenChange }: AppSidebarProps) {
   const { role, profile, signOut } = useAuth();
   const location = useLocation();
   const navGroups = getNavigationForRole(role);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const handleNavigate = () => {
     onOpenChange?.(false);
@@ -36,13 +33,23 @@ export function AppSidebar({ isOpen = false, onOpenChange }: AppSidebarProps) {
   };
 
   const isActiveRoute = (url: string) => location.pathname === url;
+  const filteredGroups = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    if (!query) return navGroups;
+    return navGroups
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((item) => item.title.toLowerCase().includes(query))
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [navGroups, searchTerm]);
 
   return (
     <aside
       className={cn(
-        'w-64 bg-sidebar text-sidebar-foreground flex flex-col transition-all duration-300',
-        'fixed top-16 h-[calc(100vh-4rem)] md:h-auto md:sticky md:top-0 md:relative md:flex-shrink-0',
-        isOpen ? 'translate-x-0 left-0 z-30' : '-translate-x-full md:translate-x-0'
+        'w-64 bg-sidebar text-sidebar-foreground flex flex-col transition-transform duration-300',
+        'fixed left-0 top-14 h-[calc(100vh-3.5rem)] z-30 md:top-0 md:h-screen',
+        isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
       )}
     >
       {/* Logo Header - Desktop Only */}
@@ -81,8 +88,16 @@ export function AppSidebar({ isOpen = false, onOpenChange }: AppSidebarProps) {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-4 px-3">
-        {navGroups.map((group) => (
+      <div className="px-3 pt-3">
+        <Input
+          value={searchTerm}
+          onChange={(event) => setSearchTerm(event.target.value)}
+          placeholder="Search menu..."
+          className="h-9 border-sidebar-border bg-sidebar-accent/50 text-sidebar-foreground placeholder:text-sidebar-foreground/60"
+        />
+      </div>
+      <nav className="flex-1 overflow-y-auto py-3 px-3 sidebar-scrollbar">
+        {filteredGroups.map((group) => (
           <NavGroupComponent
             key={group.title}
             group={group}
@@ -91,6 +106,11 @@ export function AppSidebar({ isOpen = false, onOpenChange }: AppSidebarProps) {
           />
         ))}
       </nav>
+
+      <div className="px-4 py-2 border-t border-sidebar-border text-[11px] text-sidebar-foreground/70">
+        <div>Bestlink HR Management</div>
+        <div className="opacity-80">Version 1.0 • Live</div>
+      </div>
 
       {/* Logout Button */}
       <div className="p-3 border-t border-sidebar-border">
@@ -119,21 +139,12 @@ function NavGroupComponent({
   isActiveRoute: (url: string) => boolean;
   onNavigate?: () => void;
 }) {
-  const hasActiveItem = group.items.some((item) => isActiveRoute(item.url));
-  const [isOpen, setIsOpen] = useState(hasActiveItem);
-
   return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="mb-2">
-      <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors">
+    <section className="mb-3">
+      <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/60">
         {group.title}
-        <ChevronDown
-          className={cn(
-            'h-4 w-4 transition-transform duration-200',
-            isOpen && 'rotate-180'
-          )}
-        />
-      </CollapsibleTrigger>
-      <CollapsibleContent className="space-y-1 mt-1">
+      </div>
+      <div className="space-y-1 mt-1">
         {group.items.map((item) => (
           <NavLink
             key={item.url}
@@ -150,7 +161,7 @@ function NavGroupComponent({
             <span>{item.title}</span>
           </NavLink>
         ))}
-      </CollapsibleContent>
-    </Collapsible>
+      </div>
+    </section>
   );
 }

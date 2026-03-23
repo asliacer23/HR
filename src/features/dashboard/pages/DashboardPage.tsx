@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import {
   ArrowRight,
@@ -34,6 +35,7 @@ import {
   UserCheck,
   UserPlus,
   Users,
+  Inbox,
 } from 'lucide-react';
 import { PesoSign } from '@/components/icons/PesoSign';
 
@@ -43,11 +45,20 @@ interface StatCardProps {
   icon: React.ComponentType<{ className?: string }>;
   trend?: string;
   trendUp?: boolean;
+  tone?: 'primary' | 'success' | 'warning' | 'danger' | 'info' | 'neutral';
 }
 
-function StatCard({ title, value, icon: Icon, trend, trendUp }: StatCardProps) {
+function StatCard({ title, value, icon: Icon, trend, trendUp, tone = 'neutral' }: StatCardProps) {
+  const toneClass = {
+    primary: 'border-blue-200 bg-blue-50/70',
+    success: 'border-emerald-200 bg-emerald-50/70',
+    warning: 'border-amber-200 bg-amber-50/70',
+    danger: 'border-red-200 bg-red-50/70',
+    info: 'border-cyan-200 bg-cyan-50/70',
+    neutral: 'border-border/60 bg-card',
+  }[tone];
   return (
-    <div className="stat-card animate-fade-in">
+    <div className={`stat-card animate-fade-in border ${toneClass}`}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm text-muted-foreground">{title}</p>
@@ -120,6 +131,7 @@ function ActionChip({
   asLink,
   onClick,
   disabled,
+  className,
 }: {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
@@ -127,10 +139,11 @@ function ActionChip({
   asLink?: string;
   onClick?: () => void;
   disabled?: boolean;
+  className?: string;
 }) {
   if (asLink) {
     return (
-      <Button asChild size="sm" variant={variant} className="justify-start">
+      <Button asChild size="sm" variant={variant} className={className ? `justify-start ${className}` : 'justify-start'}>
         <Link to={asLink}>
           <Icon className="h-4 w-4" />
           {label}
@@ -144,7 +157,7 @@ function ActionChip({
       type="button"
       size="sm"
       variant={variant}
-      className="justify-start"
+      className={className ? `justify-start ${className}` : 'justify-start'}
       onClick={onClick}
       disabled={disabled}
     >
@@ -322,6 +335,8 @@ function HRAdminDashboard() {
   const [integrationRegistry, setIntegrationRegistry] = useState<DepartmentIntegrationRegistryItem[]>([]);
   const [integrationLoading, setIntegrationLoading] = useState(true);
   const [dispatchingDepartmentKey, setDispatchingDepartmentKey] = useState<string | null>(null);
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [detailsModalTab, setDetailsModalTab] = useState<'approvals' | 'integrations' | 'alerts' | 'audit'>('approvals');
 
   useEffect(() => {
     loadStats();
@@ -373,7 +388,7 @@ function HRAdminDashboard() {
       return;
     }
 
-    setIntegrationRegistry(data);
+    setIntegrationRegistry(data || []);
     setIntegrationLoading(false);
   };
 
@@ -384,6 +399,7 @@ function HRAdminDashboard() {
       trend: 'Faculty and staff roster aligned for 2nd semester',
       trendUp: true,
       icon: Users,
+      tone: 'success' as const,
     },
     {
       title: 'Faculty Assignment Gaps',
@@ -391,6 +407,7 @@ function HRAdminDashboard() {
       trend: 'Need dean approval before Monday load finalization',
       trendUp: false,
       icon: School,
+      tone: 'warning' as const,
     },
     {
       title: 'Pending Leave Approvals',
@@ -398,6 +415,7 @@ function HRAdminDashboard() {
       trend: '8 teaching staff awaiting principal confirmation',
       trendUp: false,
       icon: Calendar,
+      tone: 'danger' as const,
     },
     {
       title: 'Payroll Coordination Batch',
@@ -405,6 +423,7 @@ function HRAdminDashboard() {
       trend: 'Variance pack ready for Cashier endorsement',
       trendUp: true,
       icon: PesoSign,
+      tone: 'info' as const,
     },
     {
       title: 'Contract Renewals',
@@ -412,6 +431,7 @@ function HRAdminDashboard() {
       trend: '4 expiring within 30 days',
       trendUp: false,
       icon: FileClock,
+      tone: 'warning' as const,
     },
     {
       title: 'Training & Evaluation',
@@ -419,6 +439,7 @@ function HRAdminDashboard() {
       trend: 'Programs live / pending evaluation reviews',
       trendUp: true,
       icon: GraduationCap,
+      tone: 'primary' as const,
     },
   ];
 
@@ -449,7 +470,7 @@ function HRAdminDashboard() {
     },
   ];
 
-  const integrations: DashboardIntegrationRow[] = integrationRegistry.length
+  const integrations: DashboardIntegrationRow[] = integrationRegistry && integrationRegistry.length
     ? integrationRegistry.map((item) => {
         const primaryRoute = [...item.routes].sort((left, right) => left.priority - right.priority)[0];
 
@@ -619,12 +640,42 @@ function HRAdminDashboard() {
                   performance evaluation, contract renewal and employee clearance across the college.
                 </p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <ActionChip label="Add Employee" icon={UserPlus} variant="outline" onClick={() => void handleDashboardAction('Add Employee')} />
-                <ActionChip label="Assign Faculty" icon={School} variant="outline" onClick={() => void handleDashboardAction('Assign Faculty')} />
-                <ActionChip label="Submit Payroll" icon={PesoSign} variant="outline" onClick={() => void handleDashboardAction('Submit Payroll')} />
-                <ActionChip label="Approve Leave" icon={Calendar} variant="outline" onClick={() => void handleDashboardAction('Approve Leave')} />
-                <ActionChip label="Department Requests" icon={Inbox} variant="outline" onClick={() => void handleDashboardAction('Department Requests')} />
+              <div className="flex flex-wrap gap-3">
+                <ActionChip
+                  label="Add Employee"
+                  icon={UserPlus}
+                  variant="outline"
+                  className="h-9 border-white/35 bg-white/15 text-white hover:bg-white/25 hover:text-white"
+                  onClick={() => void handleDashboardAction('Add Employee')}
+                />
+                <ActionChip
+                  label="Assign Faculty"
+                  icon={School}
+                  variant="outline"
+                  className="h-9 border-white/35 bg-white/15 text-white hover:bg-white/25 hover:text-white"
+                  onClick={() => void handleDashboardAction('Assign Faculty')}
+                />
+                <ActionChip
+                  label="Submit Payroll"
+                  icon={PesoSign}
+                  variant="outline"
+                  className="h-9 border-white/35 bg-white/15 text-white hover:bg-white/25 hover:text-white"
+                  onClick={() => void handleDashboardAction('Submit Payroll')}
+                />
+                <ActionChip
+                  label="Approve Leave"
+                  icon={Calendar}
+                  variant="outline"
+                  className="h-9 border-white/35 bg-white/15 text-white hover:bg-white/25 hover:text-white"
+                  onClick={() => void handleDashboardAction('Approve Leave')}
+                />
+                <ActionChip
+                  label="Department Requests"
+                  icon={Inbox}
+                  variant="outline"
+                  className="h-9 border-white/35 bg-white/15 text-white hover:bg-white/25 hover:text-white"
+                  onClick={() => void handleDashboardAction('Department Requests')}
+                />
               </div>
             </div>
 
@@ -664,18 +715,157 @@ function HRAdminDashboard() {
             icon={card.icon}
             trend={card.trend}
             trendUp={card.trendUp}
+            tone={card.tone}
           />
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+      <DashboardPanel
+        title="HR Operations Details"
+        description="Open focused modal views so dashboard stays short and easy to scan."
+      >
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" onClick={() => { setDetailsModalTab('approvals'); setDetailsModalOpen(true); }}>
+            Approval Queue
+          </Button>
+          <Button type="button" variant="outline" onClick={() => { setDetailsModalTab('integrations'); setDetailsModalOpen(true); }}>
+            Department Integration
+          </Button>
+          <Button type="button" variant="outline" onClick={() => { setDetailsModalTab('alerts'); setDetailsModalOpen(true); }}>
+            Alerts & Lifecycle
+          </Button>
+          <Button type="button" variant="outline" onClick={() => { setDetailsModalTab('audit'); setDetailsModalOpen(true); }}>
+            Audit Logs
+          </Button>
+        </div>
+      </DashboardPanel>
+
+      <Dialog open={detailsModalOpen} onOpenChange={setDetailsModalOpen}>
+        <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>HR Dashboard Details</DialogTitle>
+            <DialogDescription>Focused detail view for approvals, integrations, alerts, and audit trail.</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-wrap gap-2 mb-4">
+            <Button size="sm" variant={detailsModalTab === 'approvals' ? 'default' : 'outline'} onClick={() => setDetailsModalTab('approvals')}>Approvals</Button>
+            <Button size="sm" variant={detailsModalTab === 'integrations' ? 'default' : 'outline'} onClick={() => setDetailsModalTab('integrations')}>Integrations</Button>
+            <Button size="sm" variant={detailsModalTab === 'alerts' ? 'default' : 'outline'} onClick={() => setDetailsModalTab('alerts')}>Alerts & Lifecycle</Button>
+            <Button size="sm" variant={detailsModalTab === 'audit' ? 'default' : 'outline'} onClick={() => setDetailsModalTab('audit')}>Audit</Button>
+          </div>
+
+          {detailsModalTab === 'approvals' && (
+            <div className="space-y-4">
+              {approvalQueue.map((item) => (
+                <div key={item.title} className="rounded-xl border border-border/60 bg-muted/20 p-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium text-foreground">{item.title}</p>
+                        <StatusBadge label={item.badge.label} tone={item.badge.tone} />
+                      </div>
+                      <p className="text-sm text-muted-foreground">{item.meta}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {item.actions.map((action) => (
+                        <Button key={action} type="button" size="sm" variant="outline" onClick={() => void handleDashboardAction(action)}>
+                          {action}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {detailsModalTab === 'integrations' && (
+            <div className="space-y-3">
+              {integrations.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <div key={item.department} className="flex flex-col gap-3 rounded-xl border border-border/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-lg bg-primary/10 p-2"><Icon className="h-5 w-5 text-primary" /></div>
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium text-foreground">{item.department}</p>
+                          <StatusBadge label={item.status} tone={item.tone} />
+                        </div>
+                        <p className="text-sm text-muted-foreground">{item.purpose}</p>
+                        <p className="font-mono text-xs text-muted-foreground/80">Endpoint: {item.endpoint}</p>
+                      </div>
+                    </div>
+                    <Button type="button" size="sm" variant="outline" onClick={() => void handleDepartmentDispatch(item)} disabled={dispatchingDepartmentKey === item.departmentKey}>
+                      <Send className="h-4 w-4" />
+                      {dispatchingDepartmentKey === item.departmentKey ? 'Dispatching...' : item.action}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {detailsModalTab === 'alerts' && (
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+              <div className="space-y-3">
+                {alerts.map((alert) => (
+                  <div key={alert.title} className="rounded-xl border border-border/60 p-4">
+                    <div className="flex items-start gap-3">
+                      {alert.tone === 'danger' ? (
+                        <CircleAlert className="mt-0.5 h-5 w-5 text-destructive" />
+                      ) : alert.tone === 'warning' ? (
+                        <Clock3 className="mt-0.5 h-5 w-5 text-warning" />
+                      ) : (
+                        <CheckCircle className="mt-0.5 h-5 w-5 text-accent" />
+                      )}
+                      <div className="space-y-1">
+                        <p className="font-medium text-foreground">{alert.title}</p>
+                        <p className="text-sm text-muted-foreground">{alert.detail}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="space-y-3">
+                {lifecycleFlow.map((stage, index) => (
+                  <div key={stage.stage} className="flex gap-3">
+                    <div className="flex flex-col items-center">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">{index + 1}</div>
+                      {index < lifecycleFlow.length - 1 ? <div className="mt-2 h-full w-px bg-border" /> : null}
+                    </div>
+                    <div className="flex-1 rounded-xl border border-border/60 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-medium text-foreground">{stage.stage}</p>
+                        <Badge variant="outline">{stage.count}</Badge>
+                      </div>
+                      <p className="mt-1 text-sm text-muted-foreground">{stage.note}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {detailsModalTab === 'audit' && (
+            <div className="space-y-3">
+              {auditTrail.map((entry) => (
+                <div key={entry} className="rounded-xl border border-border/60 bg-muted/20 p-3 text-sm text-foreground">
+                  {entry}
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1fr]">
         <DashboardPanel
-          title="Approval Queue"
-          description="Time-sensitive HR approvals and cross-department routing for the school week."
+          title="Workflow Summary"
+          description="Top-level HR flow and department coordination summary."
           action={<Badge variant="secondary" className="bg-warning/10 text-warning">Priority Board</Badge>}
         >
           <div className="space-y-4">
-            {approvalQueue.map((item) => (
+            {approvalQueue.slice(0, 2).map((item) => (
               <div key={item.title} className="rounded-xl border border-border/60 bg-muted/20 p-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="space-y-1">
@@ -705,8 +895,8 @@ function HRAdminDashboard() {
         </DashboardPanel>
 
         <DashboardPanel
-          title="Department Integration Tracker"
-          description="School office coordination across the employee lifecycle."
+          title="Integration Snapshot"
+          description="Live status snapshot of inter-office dispatch."
           action={
             <Badge variant="secondary" className="bg-success/10 text-success">
               {integrationLoading ? 'Loading RPC Registry' : 'Live Handoff Matrix'}
@@ -714,7 +904,7 @@ function HRAdminDashboard() {
           }
         >
           <div className="space-y-3">
-            {integrations.map((item) => {
+            {integrations.slice(0, 3).map((item) => {
               const Icon = item.icon;
               return (
                 <div key={item.department} className="flex flex-col gap-3 rounded-xl border border-border/60 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -741,84 +931,11 @@ function HRAdminDashboard() {
                     disabled={dispatchingDepartmentKey === item.departmentKey}
                   >
                     <Send className="h-4 w-4" />
-                    {dispatchingDepartmentKey === item.departmentKey ? 'Dispatching...' : item.action}
+                    {dispatchingDepartmentKey === item.departmentKey ? 'Dispatching...' : 'Dispatch'}
                   </Button>
                 </div>
               );
             })}
-          </div>
-        </DashboardPanel>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1fr_0.9fr]">
-        <DashboardPanel
-          title="Alerts & Compliance"
-          description="Critical issues that need HR action before payroll, onboarding or contract deadlines."
-        >
-          <div className="space-y-3">
-            {alerts.map((alert) => (
-              <div key={alert.title} className="rounded-xl border border-border/60 p-4">
-                <div className="flex items-start gap-3">
-                  {alert.tone === 'danger' ? (
-                    <CircleAlert className="mt-0.5 h-5 w-5 text-destructive" />
-                  ) : alert.tone === 'warning' ? (
-                    <Clock3 className="mt-0.5 h-5 w-5 text-warning" />
-                  ) : (
-                    <CheckCircle className="mt-0.5 h-5 w-5 text-accent" />
-                  )}
-                  <div className="space-y-1">
-                    <p className="font-medium text-foreground">{alert.title}</p>
-                    <p className="text-sm text-muted-foreground">{alert.detail}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </DashboardPanel>
-
-        <DashboardPanel
-          title="Employee Lifecycle Flow"
-          description="How HR routes employee cases from hiring through clearance."
-        >
-          <div className="space-y-3">
-            {lifecycleFlow.map((stage, index) => (
-              <div key={stage.stage} className="flex gap-3">
-                <div className="flex flex-col items-center">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-                    {index + 1}
-                  </div>
-                  {index < lifecycleFlow.length - 1 ? <div className="mt-2 h-full w-px bg-border" /> : null}
-                </div>
-                <div className="flex-1 rounded-xl border border-border/60 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="font-medium text-foreground">{stage.stage}</p>
-                    <Badge variant="outline">{stage.count}</Badge>
-                  </div>
-                  <p className="mt-1 text-sm text-muted-foreground">{stage.note}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </DashboardPanel>
-
-        <DashboardPanel
-          title="Audit Logs"
-          description="Recent HR system actions and inter-office endorsements."
-          action={
-            <Button asChild size="sm" variant="ghost">
-              <Link to="/admin/audit-logs">
-                View All
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-          }
-        >
-          <div className="space-y-3">
-            {auditTrail.map((entry) => (
-              <div key={entry} className="rounded-xl border border-border/60 bg-muted/20 p-3 text-sm text-foreground">
-                {entry}
-              </div>
-            ))}
           </div>
         </DashboardPanel>
       </div>

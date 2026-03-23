@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Plus, Search, Calendar, Edit, Eye, Trash2, Loader2 } from 'lucide-react';
+import { Search, Edit, Eye, Trash2, Loader2, UserPlus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -31,8 +31,15 @@ interface Interview {
   notes: string | null;
   created_at: string;
   application_id: string;
+  manual_applicant_name?: string | null;
   job_applications?: {
+    id?: string;
+    applicant_id?: string;
+    status?: string;
+    notes?: string | null;
     applicants?: {
+      id?: string;
+      user_id?: string;
       profiles?: {
         first_name: string;
         last_name: string;
@@ -40,6 +47,13 @@ interface Interview {
     };
     job_postings?: {
       title: string;
+      salary_range_min?: number | null;
+      salary_range_max?: number | null;
+      positions?: {
+        id: string;
+        title: string;
+        department_id: string | null;
+      } | null;
     };
   };
 }
@@ -51,8 +65,11 @@ export function InterviewsPage() {
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isAcceptOpen, setIsAcceptOpen] = useState(false);
   const [selectedInterview, setSelectedInterview] = useState<Interview | null>(null);
+  const [pendingAcceptInterview, setPendingAcceptInterview] = useState<Interview | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [acceptingInterviewId, setAcceptingInterviewId] = useState<string | null>(null);
 
   // Edit form state
   const [editFormData, setEditFormData] = useState({
@@ -62,18 +79,69 @@ export function InterviewsPage() {
     notes: '',
   });
 
-  useEffect(() => {
-    fetchInterviews();
-  }, []);
+  // Pagination State
+  const PAGE_SIZE = 10;
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
 
-  const fetchInterviews = async () => {
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery.trim());
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
+
+  const fetchInterviews = useCallback(async () => {
     setIsLoading(true);
     try {
-      // Fetch all interviews
-      const { data: interviewsData, error: interviewsError } = await supabase
+      let matchingApplicationIds: string[] = [];
+      let hasSearchFilter = false;
+
+      if (debouncedSearchQuery) {
+        hasSearchFilter = true;
+        const searchPattern = `%${debouncedSearchQuery}%`;
+        
+        // Search Profiles
+        const { data: profiles } = await supabase.from('profiles').select('user_id').or(`first_name.ilike.${searchPattern},last_name.ilike.${searchPattern}`);
+        const userIds = profiles?.map(p => p.user_id) || [];
+        const { data: applicants } = await supabase.from('applicants').select('id').in('user_id', userIds);
+        const applicantIds = applicants?.map(a => a.id) || [];
+        
+        // Search Job Postings
+        const { data: jobPostings } = await supabase.from('job_postings').select('id').ilike('title', searchPattern);
+        const jobPostingIds = jobPostings?.map(j => j.id) || [];
+
+        // Match Job Applications
+        if (applicantIds.length > 0 || jobPostingIds.length > 0) {
+          let appQuery = supabase.from('job_applications').select('id');
+          const orClauses: string[] = [];
+          if (applicantIds.length > 0) orClauses.push(`applicant_id.in.(${applicantIds.join(',')})`);
+          if (jobPostingIds.length > 0) orClauses.push(`job_posting_id.in.(${jobPostingIds.join(',')})`);
+          appQuery = appQuery.or(orClauses.join(','));
+          const { data: apps } = await appQuery;
+          matchingApplicationIds = apps?.map(a => a.id) || [];
+        }
+      }
+
+      let query = supabase
         .from('interview_schedules')
-        .select('*')
-        .order('scheduled_date', { ascending: true });
+        .select('*', { count: 'exact' });
+
+      if (hasSearchFilter) {
+        const orStr = [`location.ilike.%${debouncedSearchQuery}%`];
+        if (matchingApplicationIds.length > 0) {
+          orStr.push(`application_id.in.(${matchingApplicationIds.join(',')})`);
+        }
+        query = query.or(orStr.join(','));
+      }
+
+      const from = (page - 1) * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
+      const { data: interviewsData, error: interviewsError, count } = await query
+        .order('scheduled_date', { ascending: true })
+        .range(from, to);
 
       if (interviewsError) {
         toast.error('Failed to fetch interviews');
@@ -81,10 +149,21 @@ export function InterviewsPage() {
         return;
       }
 
-      // Fetch job applications
+      setTotalCount(count || 0);
+
+      if (!interviewsData || interviewsData.length === 0) {
+        setInterviews([]);
+        setIsLoading(false);
+        return;
+      }
+
+      const applicationIds = [...new Set(interviewsData.map(i => i.application_id))].filter(Boolean);
+
+      // Fetch related job applications for this page
       const { data: applicationsData } = await supabase
         .from('job_applications')
-        .select('*');
+        .select('*')
+        .in('id', applicationIds);
 
       // Get unique IDs for related data
       const applicantIds = [...new Set((applicationsData || []).map(a => a.applicant_id))].filter(Boolean);
@@ -114,10 +193,15 @@ export function InterviewsPage() {
         const profile = (profilesData || []).find(p => p.user_id === applicant?.user_id);
         const jobPosting = (jobPostingsDataResult || []).find(j => j.id === application?.job_posting_id);
         const position = (positionsDataResult || []).find(p => p.id === jobPosting?.position_id);
+        const manualName = typeof application?.notes === 'string' && application.notes.startsWith('HR_MANUAL_APPLICANT:')
+          ? application.notes.replace('HR_MANUAL_APPLICANT:', '').trim()
+          : null;
 
         return {
           ...interview,
+          manual_applicant_name: manualName,
           job_applications: {
+            ...application,
             applicants: {
               ...applicant,
               profiles: profile,
@@ -136,7 +220,15 @@ export function InterviewsPage() {
       toast.error('Failed to fetch interviews');
     }
     setIsLoading(false);
-  };
+  }, [debouncedSearchQuery, page]);
+
+  useEffect(() => {
+    void fetchInterviews();
+  }, [fetchInterviews]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearchQuery]);
 
   const handleViewInterview = (interview: Interview) => {
     setSelectedInterview(interview);
@@ -212,18 +304,39 @@ export function InterviewsPage() {
     setIsSaving(false);
   };
 
-  const filteredInterviews = interviews.filter(interview =>
-    interview.job_applications?.applicants?.profiles?.first_name
-      ?.toLowerCase()
-      .includes(searchQuery.toLowerCase()) ||
-    interview.job_applications?.applicants?.profiles?.last_name
-      ?.toLowerCase()
-      .includes(searchQuery.toLowerCase()) ||
-    interview.job_applications?.job_postings?.title
-      ?.toLowerCase()
-      .includes(searchQuery.toLowerCase()) ||
-    interview.location?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const handleAcceptApplicant = async (interview: Interview) => {
+    const applicationId = interview.job_applications?.id || interview.application_id;
+    if (!applicationId) {
+      toast.error('Missing application data');
+      return;
+    }
+
+    setAcceptingInterviewId(interview.id);
+    try {
+      const { error: hireError } = await supabase
+        .from('job_applications')
+        .update({
+          status: 'hired',
+          reviewed_at: new Date().toISOString(),
+        })
+        .eq('id', applicationId);
+
+      if (hireError) {
+        toast.error(hireError.message || 'Failed to mark applicant as hired');
+        return;
+      }
+
+      toast.success('Applicant accepted. It is now available in Employees user account selection.');
+      await fetchInterviews();
+    } catch (error) {
+      console.error('Failed to accept applicant:', error);
+      toast.error('Failed to accept applicant');
+    } finally {
+      setAcceptingInterviewId(null);
+    }
+  };
+
+  const filteredInterviews = interviews; // server side filtering
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -257,7 +370,7 @@ export function InterviewsPage() {
               <th>Location</th>
               <th>Status</th>
               <th>Notes</th>
-              <th className="w-24">Actions</th>
+              <th className="w-40">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -278,8 +391,9 @@ export function InterviewsPage() {
               filteredInterviews.map((interview) => (
                 <tr key={interview.id}>
                   <td className="font-medium">
-                    {interview.job_applications?.applicants?.profiles?.first_name}{' '}
-                    {interview.job_applications?.applicants?.profiles?.last_name}
+                    {interview.manual_applicant_name ||
+                      `${interview.job_applications?.applicants?.profiles?.first_name || ''} ${interview.job_applications?.applicants?.profiles?.last_name || ''}`.trim() ||
+                      'Applicant'}
                   </td>
                   <td>{interview.job_applications?.job_postings?.title || '-'}</td>
                   <td className="font-medium">
@@ -318,6 +432,22 @@ export function InterviewsPage() {
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setPendingAcceptInterview(interview);
+                          setIsAcceptOpen(true);
+                        }}
+                        title="Accept applicant and add employee"
+                        disabled={acceptingInterviewId === interview.id || interview.job_applications?.status === 'hired'}
+                      >
+                        {acceptingInterviewId === interview.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <UserPlus className="h-4 w-4" />
+                        )}
+                      </Button>
                     </div>
                   </td>
                 </tr>
@@ -325,6 +455,50 @@ export function InterviewsPage() {
             )}
           </tbody>
         </table>
+        {totalCount > 0 && (
+          <div className="p-4 border-t flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">
+              Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalCount)} of {totalCount}
+            </span>
+            <div className="flex flex-wrap items-center gap-1">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setPage(1)}
+                disabled={page === 1 || isLoading}
+              >
+                <ChevronsLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1 || isLoading}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="px-3 text-sm font-medium">
+                Page {page} of {Math.ceil(totalCount / PAGE_SIZE) || 1}
+              </span>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setPage((p) => Math.min(Math.ceil(totalCount / PAGE_SIZE) || 1, p + 1))}
+                disabled={page === (Math.ceil(totalCount / PAGE_SIZE) || 1) || isLoading}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setPage(Math.ceil(totalCount / PAGE_SIZE) || 1)}
+                disabled={page === (Math.ceil(totalCount / PAGE_SIZE) || 1) || isLoading}
+              >
+                <ChevronsRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* View Interview Dialog */}
@@ -338,8 +512,9 @@ export function InterviewsPage() {
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">Candidate</Label>
                 <p className="font-medium">
-                  {selectedInterview.job_applications?.applicants?.profiles?.first_name}{' '}
-                  {selectedInterview.job_applications?.applicants?.profiles?.last_name}
+                  {selectedInterview.manual_applicant_name ||
+                    `${selectedInterview.job_applications?.applicants?.profiles?.first_name || ''} ${selectedInterview.job_applications?.applicants?.profiles?.last_name || ''}`.trim() ||
+                    'Applicant'}
                 </p>
               </div>
               <div className="space-y-2">
@@ -389,8 +564,9 @@ export function InterviewsPage() {
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">Candidate</Label>
                 <p className="font-medium">
-                  {selectedInterview.job_applications?.applicants?.profiles?.first_name}{' '}
-                  {selectedInterview.job_applications?.applicants?.profiles?.last_name}
+                  {selectedInterview.manual_applicant_name ||
+                    `${selectedInterview.job_applications?.applicants?.profiles?.first_name || ''} ${selectedInterview.job_applications?.applicants?.profiles?.last_name || ''}`.trim() ||
+                    'Applicant'}
                 </p>
               </div>
               <div className="space-y-2">
@@ -461,8 +637,9 @@ export function InterviewsPage() {
           <AlertDialogDescription>
             Are you sure you want to delete this interview with{' '}
             <strong>
-              {selectedInterview?.job_applications?.applicants?.profiles?.first_name}{' '}
-              {selectedInterview?.job_applications?.applicants?.profiles?.last_name}
+              {selectedInterview?.manual_applicant_name ||
+                `${selectedInterview?.job_applications?.applicants?.profiles?.first_name || ''} ${selectedInterview?.job_applications?.applicants?.profiles?.last_name || ''}`.trim() ||
+                'Applicant'}
             </strong>
             ? This action cannot be undone.
           </AlertDialogDescription>
@@ -474,6 +651,29 @@ export function InterviewsPage() {
             >
               {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Delete
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Accept Confirmation Dialog */}
+      <AlertDialog open={isAcceptOpen} onOpenChange={setIsAcceptOpen}>
+        <AlertDialogContent>
+          <AlertDialogTitle>Accept Applicant</AlertDialogTitle>
+          <AlertDialogDescription>
+            Accept this applicant now? This action is one-time only and will set the application status to hired.
+          </AlertDialogDescription>
+          <div className="flex gap-2 justify-end">
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingAcceptInterview) {
+                  void handleAcceptApplicant(pendingAcceptInterview);
+                }
+                setPendingAcceptInterview(null);
+              }}
+            >
+              Confirm Accept
             </AlertDialogAction>
           </div>
         </AlertDialogContent>

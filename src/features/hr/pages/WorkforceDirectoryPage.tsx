@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,6 +15,10 @@ import { EMPLOYEE_TYPE_LABELS, EMPLOYMENT_STATUS_LABELS, EmploymentStatus } from
 import { toast } from 'sonner';
 import {
   BriefcaseBusiness,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   GraduationCap,
   Loader2,
   RefreshCw,
@@ -80,6 +84,9 @@ export function WorkforceDirectoryPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [departmentFilter, setDepartmentFilter] = useState('all');
+  const [instructorsPage, setInstructorsPage] = useState(1);
+  const [otherEmployeesPage, setOtherEmployeesPage] = useState(1);
+  const PAGE_SIZE = 12;
 
   const loadDirectory = async () => {
     setIsLoading(true);
@@ -170,6 +177,24 @@ export function WorkforceDirectoryPage() {
   const activeEmployeesCount = employees.filter(
     (employee) => employee.employment_status === 'active'
   ).length;
+
+  const instructorsTotalPages = Math.max(1, Math.ceil(filteredInstructors.length / PAGE_SIZE));
+  const otherEmployeesTotalPages = Math.max(1, Math.ceil(filteredOtherEmployees.length / PAGE_SIZE));
+
+  useEffect(() => {
+    setInstructorsPage(1);
+    setOtherEmployeesPage(1);
+  }, [searchQuery, statusFilter, departmentFilter, activeTab]);
+
+  const pagedInstructors = useMemo(() => {
+    const start = (instructorsPage - 1) * PAGE_SIZE;
+    return filteredInstructors.slice(start, start + PAGE_SIZE);
+  }, [filteredInstructors, instructorsPage]);
+
+  const pagedOtherEmployees = useMemo(() => {
+    const start = (otherEmployeesPage - 1) * PAGE_SIZE;
+    return filteredOtherEmployees.slice(start, start + PAGE_SIZE);
+  }, [filteredOtherEmployees, otherEmployeesPage]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -338,7 +363,7 @@ export function WorkforceDirectoryPage() {
                         </td>
                       </tr>
                     ) : (
-                      filteredInstructors.map((instructor) => (
+                      pagedInstructors.map((instructor) => (
                         <tr key={instructor.id}>
                           <td className="font-mono">{instructor.employee_no}</td>
                           <td className="font-medium">{getInstructorName(instructor)}</td>
@@ -367,6 +392,46 @@ export function WorkforceDirectoryPage() {
                   </tbody>
                 </table>
               </div>
+              {filteredInstructors.length > 0 ? (
+                <div className="mt-4 flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    Showing {(instructorsPage - 1) * PAGE_SIZE + 1}-
+                    {Math.min(instructorsPage * PAGE_SIZE, filteredInstructors.length)} of {filteredInstructors.length}
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <Button variant="outline" size="icon" onClick={() => setInstructorsPage(1)} disabled={instructorsPage === 1 || isLoading}>
+                      <ChevronsLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setInstructorsPage((prev) => Math.max(1, prev - 1))}
+                      disabled={instructorsPage === 1 || isLoading}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="px-3 text-sm font-medium">
+                      Page {instructorsPage} of {instructorsTotalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setInstructorsPage((prev) => Math.min(instructorsTotalPages, prev + 1))}
+                      disabled={instructorsPage === instructorsTotalPages || isLoading}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setInstructorsPage(instructorsTotalPages)}
+                      disabled={instructorsPage === instructorsTotalPages || isLoading}
+                    >
+                      <ChevronsRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         </TabsContent>
@@ -407,7 +472,7 @@ export function WorkforceDirectoryPage() {
                         </td>
                       </tr>
                     ) : (
-                      filteredOtherEmployees.map((employee) => (
+                      pagedOtherEmployees.map((employee) => (
                         <tr key={employee.id}>
                           <td className="font-mono">{employee.employee_number}</td>
                           <td className="font-medium">{getEmployeeName(employee)}</td>
@@ -429,6 +494,46 @@ export function WorkforceDirectoryPage() {
                   </tbody>
                 </table>
               </div>
+              {filteredOtherEmployees.length > 0 ? (
+                <div className="mt-4 flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    Showing {(otherEmployeesPage - 1) * PAGE_SIZE + 1}-
+                    {Math.min(otherEmployeesPage * PAGE_SIZE, filteredOtherEmployees.length)} of {filteredOtherEmployees.length}
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <Button variant="outline" size="icon" onClick={() => setOtherEmployeesPage(1)} disabled={otherEmployeesPage === 1 || isLoading}>
+                      <ChevronsLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setOtherEmployeesPage((prev) => Math.max(1, prev - 1))}
+                      disabled={otherEmployeesPage === 1 || isLoading}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="px-3 text-sm font-medium">
+                      Page {otherEmployeesPage} of {otherEmployeesTotalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setOtherEmployeesPage((prev) => Math.min(otherEmployeesTotalPages, prev + 1))}
+                      disabled={otherEmployeesPage === otherEmployeesTotalPages || isLoading}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setOtherEmployeesPage(otherEmployeesTotalPages)}
+                      disabled={otherEmployeesPage === otherEmployeesTotalPages || isLoading}
+                    >
+                      <ChevronsRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         </TabsContent>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Search, Eye, UserPlus, Loader2, Send } from 'lucide-react';
+import { Plus, Search, Eye, UserPlus, Loader2, Send, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { EMPLOYMENT_STATUS_LABELS, EMPLOYEE_TYPE_LABELS, EmploymentStatus, EmployeeType, ContractType, CONTRACT_TYPE_LABELS } from '@/lib/constants';
 import {
   Dialog,
@@ -57,16 +57,11 @@ interface Position {
   department_id: string | null;
 }
 
-interface CandidateUser {
-  user_id: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-}
-
 interface HiredApplicant {
   id: string;
   user_id: string;
+  manual_name?: string | null;
+  display_name?: string | null;
   profiles?: {
     first_name: string;
     last_name: string;
@@ -138,8 +133,17 @@ export function EmployeesPage() {
   const [syncingEmployeeId, setSyncingEmployeeId] = useState<string | null>(null);
   const [syncingTargetKey, setSyncingTargetKey] = useState<string | null>(null);
   const [selectedApplicant, setSelectedApplicant] = useState<string>('');
+  const [selectedAcceptedApplicantId, setSelectedAcceptedApplicantId] = useState<string>('');
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
-  const [candidateUsers, setCandidateUsers] = useState<CandidateUser[]>([]);
+  const [nextEmployeeNumber, setNextEmployeeNumber] = useState('EMP-0001');
+
+  // Pagination state
+  const PAGE_SIZE = 10;
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [editFormData, setEditFormData] = useState({
     first_name: '',
     last_name: '',
@@ -229,11 +233,42 @@ export function EmployeesPage() {
   const fetchData = useCallback(async () => {
     setIsLoading(true);
 
-    // Fetch employees
-    const { data: empData, error: empError } = await supabase
+    const from = (page - 1) * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+
+    // --- Server-side search: find matching user_ids from profiles if searching ---
+    let matchingUserIds: string[] | null = null;
+    if (searchQuery.trim()) {
+      const term = `%${searchQuery.trim()}%`;
+      const { data: matchedProfiles } = await supabase
+        .from('profiles')
+        .select('user_id')
+        .or(`first_name.ilike.${term},last_name.ilike.${term}`);
+      matchingUserIds = (matchedProfiles || []).map(p => p.user_id);
+    }
+
+    // --- Fetch paginated employees with server-side filtering ---
+    let empQuery = supabase
       .from('employees')
-      .select('*')
+      .select('*', { count: 'exact' })
       .order('employee_number');
+
+    if (searchQuery.trim()) {
+      const term = `%${searchQuery.trim()}%`;
+      if (matchingUserIds && matchingUserIds.length > 0) {
+        // Match by employee_number OR by user_id from name search
+        empQuery = empQuery.or(
+          `employee_number.ilike.${term},user_id.in.(${matchingUserIds.join(',')})`
+        );
+      } else {
+        // Only match by employee_number (no profile matches)
+        empQuery = empQuery.ilike('employee_number', term);
+      }
+    }
+
+    empQuery = empQuery.range(from, to);
+
+    const { data: empData, error: empError, count: empCount } = await empQuery;
 
     if (empError) {
       toast.error('Failed to fetch employees');
@@ -241,8 +276,21 @@ export function EmployeesPage() {
       return;
     }
 
-    // Fetch departments and positions separately to avoid view join issues
-    const userIds = (empData || []).map(e => e.user_id).filter(id => id && id.length > 0);
+    setTotalCount(empCount ?? 0);
+
+    // Get next unique employee number from existing records.
+    const { data: employeeNumbers } = await supabase
+      .from('employees')
+      .select('employee_number');
+    const maxNumeric = (employeeNumbers || []).reduce((max, row) => {
+      const match = row.employee_number?.match(/(\d+)(?!.*\d)/);
+      const numeric = match ? Number(match[1]) : 0;
+      return Number.isFinite(numeric) && numeric > max ? numeric : max;
+    }, 0);
+    setNextEmployeeNumber(`EMP-${String(maxNumeric + 1).padStart(4, '0')}`);
+
+    // Fetch departments, positions, and profiles for THIS page of employees only
+    const pageUserIds = (empData || []).map(e => e.user_id).filter(id => id && id.length > 0);
     const [
       { data: allDepts },
       { data: allPos },
@@ -251,24 +299,17 @@ export function EmployeesPage() {
       supabase.from('departments').select('id, name'),
       supabase.from('positions').select('id, title'),
       supabase.from('profiles').select('user_id, first_name, last_name, email')
-        .in('user_id', userIds.length ? userIds : ['00000000-0000-0000-0000-000000000000'])
+        .in('user_id', pageUserIds.length ? pageUserIds : ['00000000-0000-0000-0000-000000000000'])
     ]);
 
-    const { data: allProfiles } = await supabase
-      .from('profiles')
-      .select('user_id, first_name, last_name, email');
+    // Get ALL employee user_ids to filter candidates (lightweight query)
+    const { data: allEmployeeUserIds } = await supabase
+      .from('employees')
+      .select('user_id');
 
-    const existingEmployeeUserIdSet = new Set(userIds);
-    const availableCandidates = (allProfiles || [])
-      .filter((profile) => !existingEmployeeUserIdSet.has(profile.user_id))
-      .map((profile) => ({
-        user_id: profile.user_id,
-        first_name: profile.first_name || '',
-        last_name: profile.last_name || '',
-        email: profile.email || '',
-      }));
-    setCandidateUsers(availableCandidates);
-
+    const existingEmployeeUserIdSet = new Set(
+      (allEmployeeUserIds || []).map(e => e.user_id)
+    );
     const employeesWithProfiles = (empData || []).map(emp => ({
       ...emp,
       departments: allDepts?.find(d => d.id === emp.department_id),
@@ -278,7 +319,7 @@ export function EmployeesPage() {
 
     setEmployees(employeesWithProfiles);
 
-    // Fetch departments
+    // Fetch departments for select dropdowns
     const { data: deptData } = await supabase
       .from('departments')
       .select('id, name')
@@ -286,7 +327,7 @@ export function EmployeesPage() {
       .order('name');
     setDepartments(deptData || []);
 
-    // Fetch positions
+    // Fetch positions for select dropdowns
     const { data: posData } = await supabase
       .from('positions')
       .select('id, title, department_id')
@@ -295,18 +336,17 @@ export function EmployeesPage() {
     setPositions(posData || []);
 
     // Fetch hired applicants not yet converted to employees
-    const { data: existingEmployeeUserIds } = await supabase
-      .from('employees')
-      .select('user_id');
-
-    const existingIds = (existingEmployeeUserIds || []).map(e => e.user_id);
+    const existingIds = Array.from(existingEmployeeUserIdSet);
 
     // Get hired applications with full job posting details
     const { data: hiredApps } = await supabase
       .from('job_applications')
       .select(`
+        id,
         applicant_id,
+        notes,
         job_postings (
+          title,
           id,
           positions (id, title, department_id),
           salary_range_min,
@@ -323,39 +363,56 @@ export function EmployeesPage() {
         .select('id, user_id')
         .in('id', hiredApplicantIds);
 
-      // Filter out those already employees
-      const notYetEmployees = (applicantsData || []).filter(
-        a => !existingIds.includes(a.user_id)
-      );
-
       // Get profiles
-      const applicantUserIds = notYetEmployees.map(a => a.user_id);
+      const applicantUserIds = (applicantsData || []).map(a => a.user_id);
       const { data: appProfiles } = await supabase
         .from('profiles')
         .select('user_id, first_name, last_name, email')
         .in('user_id', applicantUserIds.length ? applicantUserIds : ['00000000-0000-0000-0000-000000000000']);
 
-      const hiredWithDetails = notYetEmployees.map(app => {
+      const hiredWithDetails = (applicantsData || []).map(app => {
         const appHired = hiredApps?.find(h => h.applicant_id === app.id);
+        const manualName =
+          typeof appHired?.notes === 'string' && appHired.notes.startsWith('HR_MANUAL_APPLICANT:')
+            ? appHired.notes.replace('HR_MANUAL_APPLICANT:', '').trim()
+            : null;
+        const profileName = appProfiles?.find(p => p.user_id === app.user_id)
+          ? `${appProfiles?.find(p => p.user_id === app.user_id)?.first_name || ''} ${appProfiles?.find(p => p.user_id === app.user_id)?.last_name || ''}`.trim()
+          : null;
         return {
           ...app,
+          manual_name: manualName,
+          display_name: manualName || profileName || 'Accepted Applicant',
           profiles: appProfiles?.find(p => p.user_id === app.user_id),
           job_applications: appHired ? [{ job_postings: appHired.job_postings }] : [],
         };
       });
 
-      setHiredApplicants(hiredWithDetails);
+      // Only show accepted applicants that are not yet employees.
+      const availableAcceptedApplicants = hiredWithDetails.filter(
+        (applicant) => !existingIds.includes(applicant.user_id)
+      );
+      setHiredApplicants(availableAcceptedApplicants);
     } else {
       setHiredApplicants([]);
     }
 
     await loadIntegrationDirectory();
     setIsLoading(false);
-  }, [loadIntegrationDirectory]);
+  }, [loadIntegrationDirectory, page, searchQuery]);
 
   useEffect(() => {
     void fetchData();
   }, [fetchData]);
+
+  // Debounced search handler to reset page and trigger fetch
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setPage(1);
+    }, 300);
+  };
 
   const getEmployeeTypeFromPosition = (positionTitle?: string): EmployeeType => {
     if (!positionTitle) return 'staff';
@@ -399,10 +456,50 @@ export function EmployeesPage() {
     // Update form with auto-filled data
     setFormData(prev => ({
       ...prev,
+      user_id: applicant.user_id,
       employee_type: detectedType,
       department_id: position?.department_id || prev.department_id,
       position_id: position?.id || prev.position_id,
       salary: avgSalary,
+    }));
+  };
+
+  const acceptedApplicantByUserId = useMemo(() => {
+    const map = new Map<string, HiredApplicant>();
+    hiredApplicants.forEach((applicant) => {
+      if (applicant.user_id) {
+        map.set(applicant.user_id, applicant);
+      }
+    });
+    return map;
+  }, [hiredApplicants]);
+
+  const handleUserAccountSelect = (applicantId: string) => {
+    setSelectedAcceptedApplicantId(applicantId);
+    const hiredApplicant = hiredApplicants.find((entry) => entry.id === applicantId);
+    if (!hiredApplicant) return;
+    const userId = hiredApplicant.user_id;
+
+    const position = hiredApplicant.job_applications?.[0]?.job_postings?.positions;
+    const jobPosting = hiredApplicant.job_applications?.[0]?.job_postings;
+    const detectedType = getEmployeeTypeFromPosition(position?.title);
+
+    let avgSalary = '';
+    if (jobPosting?.salary_range_min && jobPosting?.salary_range_max) {
+      avgSalary = Math.round((jobPosting.salary_range_min + jobPosting.salary_range_max) / 2).toString();
+    } else if (jobPosting?.salary_range_min) {
+      avgSalary = jobPosting.salary_range_min.toString();
+    } else if (jobPosting?.salary_range_max) {
+      avgSalary = jobPosting.salary_range_max.toString();
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      user_id: userId,
+      employee_type: detectedType,
+      department_id: position?.department_id || prev.department_id,
+      position_id: position?.id || prev.position_id,
+      salary: avgSalary || prev.salary,
     }));
   };
 
@@ -473,9 +570,10 @@ export function EmployeesPage() {
   };
 
   const resetForm = () => {
+    setSelectedAcceptedApplicantId('');
     setFormData({
       user_id: '',
-      employee_number: '',
+      employee_number: nextEmployeeNumber,
       employee_type: 'staff',
       department_id: '',
       position_id: '',
@@ -485,6 +583,19 @@ export function EmployeesPage() {
     });
   };
 
+  useEffect(() => {
+    if (!isCreateOpen) return;
+    setFormData((prev) => ({
+      ...prev,
+      employee_number: prev.employee_number || nextEmployeeNumber,
+    }));
+  }, [isCreateOpen, nextEmployeeNumber]);
+
+  useEffect(() => {
+    if (!isCreateOpen) return;
+    void fetchData();
+  }, [isCreateOpen, fetchData]);
+
   const handleCreateEmployee = async () => {
     if (!formData.user_id || !formData.employee_number.trim()) {
       toast.error('User and employee number are required.');
@@ -492,6 +603,26 @@ export function EmployeesPage() {
     }
 
     setIsSubmitting(true);
+    // Safety check: prevent duplicate employee per accepted applicant/user.
+    const { data: existingEmployee, error: existingEmployeeError } = await supabase
+      .from('employees')
+      .select('id')
+      .eq('user_id', formData.user_id)
+      .maybeSingle();
+
+    if (existingEmployeeError) {
+      toast.error(`Failed to validate employee before save: ${existingEmployeeError.message}`);
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (existingEmployee?.id) {
+      toast.error('This accepted applicant is already in Employee List.');
+      setIsSubmitting(false);
+      await fetchData();
+      return;
+    }
+
     const { data: created, error } = await supabase
       .from('employees')
       .insert([
@@ -525,8 +656,8 @@ export function EmployeesPage() {
     }
 
     setIsCreateOpen(false);
-    resetForm();
     await fetchData();
+    resetForm();
     setIsSubmitting(false);
   };
 
@@ -658,11 +789,8 @@ export function EmployeesPage() {
     setIsSubmitting(false);
   };
 
-  const filteredEmployees = employees.filter(emp =>
-    emp.employee_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    emp.profiles?.first_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    emp.profiles?.last_name?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Filtering is now done server-side via the paginated query
+  const filteredEmployees = employees;
 
   const getStatusColor = (status: EmploymentStatus) => {
     switch (status) {
@@ -687,12 +815,6 @@ export function EmployeesPage() {
           <p>Manage employee records</p>
         </div>
         <div className="flex gap-2">
-          {hiredApplicants.length > 0 && (
-            <Button variant="outline" onClick={() => setIsConvertOpen(true)}>
-              <UserPlus className="mr-2 h-4 w-4" />
-              Convert Hired ({hiredApplicants.length})
-            </Button>
-          )}
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
               <Button className="btn-primary-gradient">
@@ -706,20 +828,29 @@ export function EmployeesPage() {
               </DialogHeader>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>User Account</Label>
+                  <Label>Accepted List</Label>
                   <Select
-                    value={formData.user_id}
-                    onValueChange={(v) => setFormData({ ...formData, user_id: v })}
+                    value={selectedAcceptedApplicantId}
+                    onValueChange={handleUserAccountSelect}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select existing user profile" />
+                      <SelectValue placeholder="Select accepted applicant" />
                     </SelectTrigger>
                     <SelectContent>
-                      {candidateUsers.map((candidate) => (
-                        <SelectItem key={candidate.user_id} value={candidate.user_id}>
-                          {candidate.first_name} {candidate.last_name} - {candidate.email}
+                      {hiredApplicants.length > 0 ? (
+                        hiredApplicants.map((applicant) => (
+                          <SelectItem key={applicant.id} value={applicant.id}>
+                            {applicant.display_name || 'Accepted Applicant'}
+                            {applicant.job_applications?.[0]?.job_postings?.title
+                              ? ` - ${applicant.job_applications[0].job_postings.title}`
+                              : ''}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="__no_accepted__" disabled>
+                          No accepted applicants available
                         </SelectItem>
-                      ))}
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -797,7 +928,7 @@ export function EmployeesPage() {
 
                 <Button
                   onClick={handleCreateEmployee}
-                  disabled={isSubmitting || candidateUsers.length === 0}
+                  disabled={isSubmitting || hiredApplicants.length === 0 || !formData.user_id}
                   className="w-full btn-primary-gradient"
                 >
                   {isSubmitting ? (
@@ -821,7 +952,7 @@ export function EmployeesPage() {
           <Input
             placeholder="Search employees..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-9"
           />
         </div>
@@ -889,6 +1020,56 @@ export function EmployeesPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalCount)} of {totalCount}
+          </p>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setPage(1)}
+              disabled={page === 1 || isLoading}
+              aria-label="First page"
+            >
+              <ChevronsLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1 || isLoading}
+              aria-label="Previous page"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="px-3 text-sm font-medium">
+              Page {page} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages || isLoading}
+              aria-label="Next page"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setPage(totalPages)}
+              disabled={page === totalPages || isLoading}
+              aria-label="Last page"
+            >
+              <ChevronsRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Convert Hired Applicant Dialog */}
       <Dialog open={isConvertOpen} onOpenChange={setIsConvertOpen}>

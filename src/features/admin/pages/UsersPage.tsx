@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Search, UserPlus, MoreHorizontal } from 'lucide-react';
+import { Search, UserPlus, MoreHorizontal, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { ROLE_LABELS, AppRole } from '@/lib/constants';
 import {
   DropdownMenu,
@@ -43,22 +43,61 @@ export function UsersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
+  // Pagination State
+  const PAGE_SIZE = 10;
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
 
-  const fetchUsers = async () => {
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery.trim());
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
+
+  const fetchUsers = useCallback(async () => {
     setIsLoading(true);
-    const { data: profiles, error: profilesError } = await supabase
+
+    let query = supabase
       .from('profiles')
-      .select('*');
+      .select('*', { count: 'exact' });
+
+    if (debouncedSearchQuery) {
+      query = query.or(`first_name.ilike.%${debouncedSearchQuery}%,last_name.ilike.%${debouncedSearchQuery}%,email.ilike.%${debouncedSearchQuery}%`);
+    }
+
+    const from = (page - 1) * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+
+    const { data: profiles, error: profilesError, count } = await query
+      .order('created_at', { ascending: false })
+      .range(from, to);
+
+    setTotalCount(count || 0);
+
+    if (profilesError) {
+      toast.error('Failed to fetch users');
+      setIsLoading(false);
+      return;
+    }
+
+    if (!profiles || profiles.length === 0) {
+      setUsers([]);
+      setIsLoading(false);
+      return;
+    }
+
+    const userIds = profiles.map(p => p.user_id);
     
+    // Fetch roles only for these users
     const { data: roles, error: rolesError } = await supabase
       .from('user_roles')
-      .select('*');
+      .select('*')
+      .in('user_id', userIds);
 
-    if (profilesError || rolesError) {
-      toast.error('Failed to fetch users');
+    if (rolesError) {
+      toast.error('Failed to fetch user roles');
       setIsLoading(false);
       return;
     }
@@ -78,13 +117,17 @@ export function UsersPage() {
 
     setUsers(usersWithRoles);
     setIsLoading(false);
-  };
+  }, [debouncedSearchQuery, page]);
 
-  const filteredUsers = users.filter(user => 
-    user.first_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.last_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  useEffect(() => {
+    void fetchUsers();
+  }, [fetchUsers]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearchQuery]);
+
+  const filteredUsers = users; // server-side filter used
 
   const getRoleBadgeColor = (role: AppRole) => {
     switch (role) {
@@ -172,6 +215,50 @@ export function UsersPage() {
             )}
           </tbody>
         </table>
+        {totalCount > 0 && (
+          <div className="p-4 border-t flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">
+              Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalCount)} of {totalCount}
+            </span>
+            <div className="flex flex-wrap items-center gap-1">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setPage(1)}
+                disabled={page === 1 || isLoading}
+              >
+                <ChevronsLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1 || isLoading}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="px-3 text-sm font-medium">
+                Page {page} of {Math.ceil(totalCount / PAGE_SIZE) || 1}
+              </span>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setPage((p) => Math.min(Math.ceil(totalCount / PAGE_SIZE) || 1, p + 1))}
+                disabled={page === (Math.ceil(totalCount / PAGE_SIZE) || 1) || isLoading}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setPage(Math.ceil(totalCount / PAGE_SIZE) || 1)}
+                disabled={page === (Math.ceil(totalCount / PAGE_SIZE) || 1) || isLoading}
+              >
+                <ChevronsRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
