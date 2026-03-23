@@ -258,6 +258,39 @@ export type Database = {
           },
         ]
       }
+      employee_requests: {
+        Row: {
+          created_at: string
+          department: string
+          hr_remarks: string | null
+          id: string
+          position: string
+          reason: string
+          status: string
+          urgency: string
+        }
+        Insert: {
+          created_at?: string
+          department: string
+          hr_remarks?: string | null
+          id?: string
+          position: string
+          reason: string
+          status?: string
+          urgency?: string
+        }
+        Update: {
+          created_at?: string
+          department?: string
+          hr_remarks?: string | null
+          id?: string
+          position?: string
+          reason?: string
+          status?: string
+          urgency?: string
+        }
+        Relationships: []
+      }
       employee_onboarding: {
         Row: {
           completed_at: string | null
@@ -1151,6 +1184,19 @@ export type Database = {
         Args: {
           _employee_id: string
           _target_department_key?: string | null
+        }
+        Returns: Json
+      }
+      convert_hired_applicant_to_employee: {
+        Args: {
+          _applicant_id: string
+          _applicant_user_id: string
+          _contract_type?: Database["public"]["Enums"]["contract_type"]
+          _department_id: string | null
+          _employee_type: Database["public"]["Enums"]["employee_type"]
+          _hire_date: string
+          _position_id: string | null
+          _salary?: number | null
         }
         Returns: Json
       }

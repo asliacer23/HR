@@ -1,4 +1,4 @@
-﻿import { AppRole } from '@/lib/constants';
+import { AppRole } from '@/lib/constants';
 import {
   LayoutDashboard,
   Users,
@@ -14,7 +14,6 @@ import {
   Calendar,
   User,
   FolderOpen,
-  BookOpen,
 } from 'lucide-react';
 import { PesoSign } from '@/components/icons/PesoSign';
 
@@ -70,12 +69,13 @@ const systemAdminNav: NavGroup[] = [
   {
     title: 'HR Operations',
     items: [
+      { title: 'Workforce Directory', url: '/hr/workforce-directory', icon: Users },
       { title: 'Onboarding Tasks', url: '/hr/onboarding', icon: UserPlus },
       { title: 'Employee Onboarding', url: '/hr/employee-onboarding', icon: UserPlus },
       { title: 'Training Programs', url: '/hr/training', icon: GraduationCap },
       { title: 'Employee Training', url: '/hr/employee-training', icon: GraduationCap },
       { title: 'Performance', url: '/hr/performance', icon: TrendingUp },
-      { title: 'Registrar Test', url: '/hr/registrar-instructor-test', icon: BookOpen },
+      { title: 'Employee Requests', url: '/hr/employee-requests', icon: ClipboardList },
     ],
   },
   {
@@ -129,12 +129,13 @@ const hrAdminNav: NavGroup[] = [
   {
     title: 'HR Operations',
     items: [
+      { title: 'Workforce Directory', url: '/hr/workforce-directory', icon: Users },
       { title: 'Onboarding Tasks', url: '/hr/onboarding', icon: UserPlus },
       { title: 'Employee Onboarding', url: '/hr/employee-onboarding', icon: UserPlus },
       { title: 'Training Programs', url: '/hr/training', icon: GraduationCap },
       { title: 'Employee Training', url: '/hr/employee-training', icon: GraduationCap },
       { title: 'Performance', url: '/hr/performance', icon: TrendingUp },
-      { title: 'Registrar Test', url: '/hr/registrar-instructor-test', icon: BookOpen },
+      { title: 'Employee Requests', url: '/hr/employee-requests', icon: ClipboardList },
     ],
   },
   {
@@ -172,6 +173,7 @@ const employeeNav: NavGroup[] = [
   {
     title: 'Employment',
     items: [
+      { title: 'Employee Requests', url: '/hr/employee-requests', icon: ClipboardList },
       { title: 'Onboarding', url: '/my-onboarding', icon: UserPlus },
       { title: 'My Contract', url: '/my-contract', icon: FileCheck },
       { title: 'Performance', url: '/my-performance', icon: TrendingUp },

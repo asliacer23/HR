@@ -585,6 +585,8 @@ async function fetchIntegrationReadyEmployeesFromTables({
     { data: employees, error: employeesError },
     { data: profiles, error: profilesError },
     { data: roles, error: rolesError },
+    { data: allDepts },
+    { data: allPos },
   ] = await Promise.all([
     supabase
       .from('employees')
@@ -600,14 +602,14 @@ async function fetchIntegrationReadyEmployeesFromTables({
           position_id,
           supervisor_id,
           created_at,
-          updated_at,
-          departments(name, code),
-          positions(title)
+          updated_at
         `
       )
       .order('employee_number'),
     supabase.from('profiles').select('user_id, first_name, last_name, email, phone, city'),
     supabase.from('user_roles').select('user_id, role'),
+    supabase.from('departments').select('id, name, code'),
+    supabase.from('positions').select('id, title'),
   ]);
 
   if (employeesError) {
@@ -643,8 +645,8 @@ async function fetchIntegrationReadyEmployeesFromTables({
   return (employees ?? [])
     .map((employee) => {
       const employeeRecord = employee as Record<string, unknown>;
-      const departmentRecord = asObject(employeeRecord.departments);
-      const positionRecord = asObject(employeeRecord.positions);
+      const departmentRecord = allDepts?.find(d => d.id === employeeRecord.department_id);
+      const positionRecord = allPos?.find(p => p.id === employeeRecord.position_id);
       const userId = asString(employeeRecord.user_id);
       const roleNames = userId ? rolesByUserId.get(userId) ?? [] : [];
       const isAdmin =

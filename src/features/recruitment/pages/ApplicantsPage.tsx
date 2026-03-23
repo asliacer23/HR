@@ -77,22 +77,7 @@ export function ApplicantsPage() {
     // Fetch applications
     const { data: apps, error } = await supabase
       .from('job_applications')
-      .select(`
-        *,
-        applicants!inner (
-          id,
-          user_id,
-          resume_url,
-          years_experience,
-          education_level,
-          cover_letter,
-          skills
-        ),
-        job_postings (
-          title,
-          positions (title)
-        )
-      `)
+      .select('*')
       .order('applied_at', { ascending: false });
 
     if (error) {
@@ -101,19 +86,32 @@ export function ApplicantsPage() {
       return;
     }
 
+    // Fetch related data separately to avoid view join issues
+    const applicantIds = (apps || []).map(a => a.applicant_id).filter(Boolean);
+    const jobPostingIds = (apps || []).map(a => a.job_posting_id).filter(Boolean);
+
+    const [
+      { data: applicantsData },
+      { data: jobPostingsData },
+      { data: positionsData }
+    ] = await Promise.all([
+      supabase.from('applicants').select('*').in('id', applicantIds),
+      supabase.from('job_postings').select('id, title, position_id').in('id', jobPostingIds),
+      supabase.from('positions').select('id, title')
+    ]);
+
     // Fetch profiles for applicants
-    const userIds = (apps || []).map(a => a.applicants.user_id);
+    const userIds = (applicantsData || []).map(a => a.user_id).filter(Boolean);
     const { data: profiles } = await supabase
       .from('profiles')
       .select('user_id, first_name, last_name, email, phone')
-      .in('user_id', userIds);
+      .in('user_id', userIds.length ? userIds : ['00000000-0000-0000-0000-000000000000']);
 
     // Fetch all applicant documents
-    const applicantIds = (apps || []).map(a => a.applicants.id);
     const { data: documents } = await supabase
       .from('applicant_documents')
       .select('*')
-      .in('applicant_id', applicantIds);
+      .in('applicant_id', applicantIds.length ? applicantIds : ['00000000-0000-0000-0000-000000000000']);
 
     // Map documents by applicant_id
     const docsMap: Record<string, any[]> = {};
@@ -125,13 +123,23 @@ export function ApplicantsPage() {
     });
     setApplicantDocuments(docsMap);
 
-    const appsWithProfiles = (apps || []).map(app => ({
-      ...app,
-      applicants: {
-        ...app.applicants,
-        profiles: profiles?.find(p => p.user_id === app.applicants.user_id),
-      },
-    }));
+    const appsWithProfiles = (apps || []).map(app => {
+      const applicant = applicantsData?.find(a => a.id === app.applicant_id);
+      const jobPosting = jobPostingsData?.find(j => j.id === app.job_posting_id);
+      const position = positionsData?.find(p => p.id === jobPosting?.position_id);
+
+      return {
+        ...app,
+        applicants: {
+          ...applicant,
+          profiles: profiles?.find(p => p.user_id === applicant?.user_id),
+        },
+        job_postings: {
+          ...jobPosting,
+          positions: position,
+        },
+      };
+    });
 
     setApplications(appsWithProfiles as ApplicationWithDetails[]);
     setIsLoading(false);

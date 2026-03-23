@@ -45,6 +45,7 @@ export interface HrInstructorRegistrarDispatchResult {
   dispatch_endpoint?: string;
   message?: string;
   instructor_id?: string;
+  instructor_uuid?: string;
   employee_no?: string;
   employee_name?: string;
   college_unit?: string;
@@ -127,6 +128,7 @@ function normalizeDispatchResult(payload: unknown): HrInstructorRegistrarDispatc
     dispatch_endpoint: asString(record.dispatch_endpoint) ?? undefined,
     message: asString(record.message) ?? undefined,
     instructor_id: asString(record.instructor_id) ?? undefined,
+    instructor_uuid: asString(record.instructor_uuid) ?? undefined,
     employee_no: asString(record.employee_no) ?? undefined,
     employee_name: asString(record.employee_name) ?? undefined,
     college_unit: asString(record.college_unit) ?? undefined,
@@ -338,7 +340,10 @@ export async function dispatchHrInstructorToRegistrar(input: DispatchHrInstructo
     const remarks = input.remarks?.trim();
 
     const payload = {
-      employee_id: instructor.employee_id,
+      // Canonical external identifier for Registrar integrations.
+      employee_id: instructor.employee_no,
+      // Preserve UUID for internal joins and traceability.
+      employee_uuid: instructor.employee_id,
       employee_name: employeeName,
       employee_number: instructor.employee_no,
       department_name: instructor.department,
@@ -368,7 +373,8 @@ export async function dispatchHrInstructorToRegistrar(input: DispatchHrInstructo
     return {
       data: {
         ...normalizeDispatchResult(dispatchResult.data),
-        instructor_id: instructor.employee_id,
+        instructor_id: instructor.employee_no,
+        instructor_uuid: instructor.employee_id,
         employee_no: instructor.employee_no,
         employee_name: employeeName,
         college_unit: collegeUnit || undefined,
@@ -402,7 +408,18 @@ export async function fetchHrInstructorRegistrarHistory(instructorId: string, li
 
     return {
       data: data
-        .filter((event) => event.request_payload.employee_id === instructorId)
+        .filter((event) => {
+          const requestPayload = event.request_payload as Record<string, unknown>;
+          const employeeUuid = asString(requestPayload.employee_uuid);
+          const employeeId = asString(requestPayload.employee_id);
+          const employeeNumber = asString(requestPayload.employee_number);
+
+          return (
+            employeeUuid === instructorId ||
+            employeeId === instructorId ||
+            employeeNumber === instructorId
+          );
+        })
         .slice(0, Math.max(limit, 1))
         .map((event) => ({
           event_id: event.event_id,

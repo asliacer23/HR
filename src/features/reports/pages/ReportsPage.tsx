@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -30,6 +30,7 @@ import {
 } from '../services/reportService';
 
 export function ReportsPage() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('employee-summary');
   const [isLoading, setIsLoading] = useState(false);
   const [periods, setPeriods] = useState<any[]>([]);
@@ -41,6 +42,8 @@ export function ReportsPage() {
   const [payrollReport, setPayrollReport] = useState<PayrollReportData | null>(null);
   const [trainingReport, setTrainingReport] = useState<TrainingReportData | null>(null);
   const [benefitsReport, setBenefitsReport] = useState<BenefitsReportData | null>(null);
+  const [guidanceInbox, setGuidanceInbox] = useState<DepartmentFlowEvent[]>([]);
+  const [receivingEventId, setReceivingEventId] = useState<string | null>(null);
 
   // Detail modal states
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -96,10 +99,52 @@ export function ReportsPage() {
           else setBenefitsReport(data);
           break;
         }
+        case 'guidance-inbox': {
+          const { data, error } = await fetchDepartmentFlowEvents({
+            departmentKey: 'hr',
+            direction: 'incoming',
+            counterpartyDepartmentKey: 'guidance',
+            limit: 50,
+          });
+          if (error) toast.error(error);
+          else setGuidanceInbox(data);
+          break;
+        }
       }
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleReceiveGuidanceReport = async (eventItem: DepartmentFlowEvent) => {
+    setReceivingEventId(eventItem.event_id);
+    const { data, error } = await acknowledgeDepartmentFlow({
+      eventId: eventItem.event_id,
+      status: 'completed',
+      response: {
+        received_by: 'hr',
+        received_by_user_id: user?.id ?? null,
+        received_at: new Date().toISOString(),
+        source_department: 'guidance',
+        processed_in: 'hr_reports_guidance_inbox',
+      },
+    });
+
+    if (error) {
+      toast.error(error);
+      setReceivingEventId(null);
+      return;
+    }
+
+    if (!data?.ok) {
+      toast.error(data?.message ?? 'Failed to receive Guidance report.');
+      setReceivingEventId(null);
+      return;
+    }
+
+    toast.success('Guidance report received by HR.');
+    await loadReports();
+    setReceivingEventId(null);
   };
 
   const exportToCSV = (data: any[], filename: string) => {
@@ -204,7 +249,7 @@ export function ReportsPage() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="employee-summary">
             <Users className="w-4 h-4 mr-2" />
             <span className="hidden sm:inline">Employees</span>
@@ -224,6 +269,10 @@ export function ReportsPage() {
           <TabsTrigger value="benefits">
             <Gift className="w-4 h-4 mr-2" />
             <span className="hidden sm:inline">Benefits</span>
+          </TabsTrigger>
+          <TabsTrigger value="guidance-inbox">
+            <FileText className="w-4 h-4 mr-2" />
+            <span className="hidden sm:inline">Guidance Inbox</span>
           </TabsTrigger>
         </TabsList>
 
@@ -844,6 +893,90 @@ export function ReportsPage() {
             </>
           ) : (
             <div className="text-center py-8 text-gray-500">No benefits data available</div>
+          )}
+        </TabsContent>
+
+        {/* GUIDANCE INBOX TAB */}
+        <TabsContent value="guidance-inbox" className="space-y-4">
+          {isLoading ? (
+            <div className="text-center py-8 text-gray-500">Loading Guidance reports...</div>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Guidance Reports to HR</CardTitle>
+                <CardDescription>
+                  HR receives incoming reports dispatched by Guidance.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Report Ref</TableHead>
+                        <TableHead>Flow</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Dispatched</TableHead>
+                        <TableHead>Payload</TableHead>
+                        <TableHead className="text-center">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {guidanceInbox.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                            No Guidance reports found.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        guidanceInbox.map((item) => {
+                          const finalized = ['acknowledged', 'completed', 'failed', 'blocked'].includes(item.status);
+                          return (
+                            <TableRow key={item.event_id}>
+                              <TableCell className="font-medium">{item.correlation_id}</TableCell>
+                              <TableCell>
+                                <div className="text-sm">
+                                  <p className="font-medium">{item.flow_name}</p>
+                                  <p className="text-muted-foreground">{item.event_code}</p>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant={item.status === 'completed' ? 'default' : 'secondary'}>
+                                  {item.status.replace(/_/g, ' ')}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                {item.dispatched_at
+                                  ? new Date(item.dispatched_at).toLocaleString()
+                                  : new Date(item.created_at).toLocaleString()}
+                              </TableCell>
+                              <TableCell className="max-w-xs truncate">
+                                {Object.keys(item.request_payload).length > 0
+                                  ? JSON.stringify(item.request_payload)
+                                  : 'No payload'}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {finalized ? (
+                                  <Badge variant="outline">Received</Badge>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    onClick={() => void handleReceiveGuidanceReport(item)}
+                                    disabled={receivingEventId === item.event_id}
+                                  >
+                                    {receivingEventId === item.event_id ? 'Receiving...' : 'Receive Report'}
+                                  </Button>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
           )}
         </TabsContent>
       </Tabs>

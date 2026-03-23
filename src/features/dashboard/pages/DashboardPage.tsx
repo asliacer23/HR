@@ -519,10 +519,13 @@ function HRAdminDashboard() {
         navigate('/employees');
         return;
       case 'Assign Faculty':
-        navigate('/hr/registrar-instructor-test');
+        navigate('/hr/employee-requests');
         return;
       case 'Submit Payroll':
         navigate('/payroll');
+        return;
+      case 'Department Requests':
+        navigate('/hr/employee-requests');
         return;
       case 'Approve Leave':
         navigate('/employees');
@@ -621,6 +624,7 @@ function HRAdminDashboard() {
                 <ActionChip label="Assign Faculty" icon={School} variant="outline" onClick={() => void handleDashboardAction('Assign Faculty')} />
                 <ActionChip label="Submit Payroll" icon={PesoSign} variant="outline" onClick={() => void handleDashboardAction('Submit Payroll')} />
                 <ActionChip label="Approve Leave" icon={Calendar} variant="outline" onClick={() => void handleDashboardAction('Approve Leave')} />
+                <ActionChip label="Department Requests" icon={Inbox} variant="outline" onClick={() => void handleDashboardAction('Department Requests')} />
               </div>
             </div>
 
@@ -828,6 +832,7 @@ function HRAdminDashboard() {
           <ActionChip label="Assign Faculty" icon={School} variant="secondary" onClick={() => void handleDashboardAction('Assign Faculty')} />
           <ActionChip label="Submit Payroll" icon={PesoSign} variant="secondary" onClick={() => void handleDashboardAction('Submit Payroll')} />
           <ActionChip label="Approve Leave" icon={Calendar} variant="secondary" onClick={() => void handleDashboardAction('Approve Leave')} />
+          <ActionChip label="Department Requests" icon={Inbox} variant="secondary" onClick={() => void handleDashboardAction('Department Requests')} />
           <ActionChip
             label="Send to Cashier"
             icon={Landmark}

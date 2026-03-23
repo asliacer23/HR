@@ -335,32 +335,50 @@ BEGIN
 END
 $$;
 
-CREATE OR REPLACE VIEW hr.instructors AS
-SELECT
-  employee_id AS id,
-  employee_id,
-  employee_number AS employee_no,
-  first_name,
-  last_name,
-  COALESCE(department_name, 'School Administration') AS department,
-  COALESCE(position_title, '') AS specialization,
-  CASE
-    WHEN COALESCE(position_title, '') ILIKE '%assistant professor%' THEN 'Assistant Professor'
-    WHEN COALESCE(position_title, '') ILIKE '%associate professor%' THEN 'Associate Professor'
-    WHEN COALESCE(position_title, '') ILIKE '%professor%' THEN 'Professor'
-    ELSE 'Instructor'
-  END AS academic_rank,
-  employment_status,
-  primary_app_role,
-  is_admin,
-  connected_systems,
-  integration_ready,
-  created_at,
-  updated_at
-FROM public.employee_directory
-WHERE employee_type IN ('teacher', 'principal', 'registrar')
-   OR COALESCE(position_title, '') ILIKE '%instructor%'
-   OR COALESCE(position_title, '') ILIKE '%professor%';
+DO $$
+BEGIN
+  -- If hr.instructors is a physical table in this environment, keep it and avoid replacing it with a view.
+  IF EXISTS (
+    SELECT 1
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'hr'
+      AND c.relname = 'instructors'
+      AND c.relkind = 'r'
+  ) THEN
+    NULL;
+  ELSE
+    EXECUTE $view$
+      CREATE OR REPLACE VIEW hr.instructors AS
+      SELECT
+        employee_id AS id,
+        employee_id,
+        employee_number AS employee_no,
+        first_name,
+        last_name,
+        COALESCE(department_name, 'School Administration') AS department,
+        COALESCE(position_title, '') AS specialization,
+        CASE
+          WHEN COALESCE(position_title, '') ILIKE '%assistant professor%' THEN 'Assistant Professor'
+          WHEN COALESCE(position_title, '') ILIKE '%associate professor%' THEN 'Associate Professor'
+          WHEN COALESCE(position_title, '') ILIKE '%professor%' THEN 'Professor'
+          ELSE 'Instructor'
+        END AS academic_rank,
+        employment_status,
+        primary_app_role,
+        is_admin,
+        connected_systems,
+        integration_ready,
+        created_at,
+        updated_at
+      FROM public.employee_directory
+      WHERE employee_type IN ('teacher', 'principal', 'registrar')
+         OR COALESCE(position_title, '') ILIKE '%instructor%'
+         OR COALESCE(position_title, '') ILIKE '%professor%'
+    $view$;
+  END IF;
+END
+$$;
 
 CREATE OR REPLACE FUNCTION public.get_hr_instructors(
   _search TEXT DEFAULT NULL,
@@ -468,7 +486,8 @@ BEGIN
 
   payload := jsonb_strip_nulls(
     jsonb_build_object(
-      'employee_id', instructor_record.employee_id,
+      'employee_id', instructor_record.employee_no,
+      'employee_uuid', instructor_record.employee_id,
       'employee_name', trim(concat_ws(' ', instructor_record.first_name, instructor_record.last_name)),
       'employee_number', instructor_record.employee_no,
       'department_name', instructor_record.department,
@@ -500,7 +519,8 @@ BEGIN
   );
 
   RETURN result || jsonb_build_object(
-    'instructor_id', instructor_record.employee_id,
+    'instructor_id', instructor_record.employee_no,
+    'instructor_uuid', instructor_record.employee_id,
     'employee_no', instructor_record.employee_no,
     'employee_name', trim(concat_ws(' ', instructor_record.first_name, instructor_record.last_name)),
     'college_unit', NULLIF(trim(COALESCE(_college_unit, '')), ''),
@@ -549,7 +569,10 @@ BEGIN
       ON route.route_key = event.route_key
     WHERE event.target_department_key = 'registrar'
       AND event.event_code = 'faculty_assignment_validation'
-      AND event.request_payload->>'employee_id' = _instructor_id::text
+      AND COALESCE(
+        NULLIF(event.request_payload->>'employee_uuid', ''),
+        NULLIF(event.request_payload->>'employee_id', '')
+      ) = _instructor_id::text
     ORDER BY event.created_at DESC
     LIMIT GREATEST(COALESCE(_limit, 20), 1)
   ) event_row;

@@ -57,6 +57,13 @@ interface Position {
   department_id: string | null;
 }
 
+interface CandidateUser {
+  user_id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+}
+
 interface HiredApplicant {
   id: string;
   user_id: string;
@@ -132,6 +139,7 @@ export function EmployeesPage() {
   const [syncingTargetKey, setSyncingTargetKey] = useState<string | null>(null);
   const [selectedApplicant, setSelectedApplicant] = useState<string>('');
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [candidateUsers, setCandidateUsers] = useState<CandidateUser[]>([]);
   const [editFormData, setEditFormData] = useState({
     first_name: '',
     last_name: '',
@@ -143,6 +151,7 @@ export function EmployeesPage() {
   });
 
   const [formData, setFormData] = useState({
+    user_id: '',
     employee_number: '',
     employee_type: 'staff' as EmployeeType,
     department_id: '',
@@ -223,22 +232,47 @@ export function EmployeesPage() {
     // Fetch employees
     const { data: empData, error: empError } = await supabase
       .from('employees')
-      .select('*, departments(name), positions(title)')
+      .select('*')
       .order('employee_number');
 
     if (empError) {
       toast.error('Failed to fetch employees');
+      setIsLoading(false);
+      return;
     }
 
-    // Fetch user profiles for employees
-    const userIds = (empData || []).map(e => e.user_id);
-    const { data: profiles } = await supabase
+    // Fetch departments and positions separately to avoid view join issues
+    const userIds = (empData || []).map(e => e.user_id).filter(id => id && id.length > 0);
+    const [
+      { data: allDepts },
+      { data: allPos },
+      { data: profiles }
+    ] = await Promise.all([
+      supabase.from('departments').select('id, name'),
+      supabase.from('positions').select('id, title'),
+      supabase.from('profiles').select('user_id, first_name, last_name, email')
+        .in('user_id', userIds.length ? userIds : ['00000000-0000-0000-0000-000000000000'])
+    ]);
+
+    const { data: allProfiles } = await supabase
       .from('profiles')
-      .select('user_id, first_name, last_name, email')
-      .in('user_id', userIds.length ? userIds : ['none']);
+      .select('user_id, first_name, last_name, email');
+
+    const existingEmployeeUserIdSet = new Set(userIds);
+    const availableCandidates = (allProfiles || [])
+      .filter((profile) => !existingEmployeeUserIdSet.has(profile.user_id))
+      .map((profile) => ({
+        user_id: profile.user_id,
+        first_name: profile.first_name || '',
+        last_name: profile.last_name || '',
+        email: profile.email || '',
+      }));
+    setCandidateUsers(availableCandidates);
 
     const employeesWithProfiles = (empData || []).map(emp => ({
       ...emp,
+      departments: allDepts?.find(d => d.id === emp.department_id),
+      positions: allPos?.find(p => p.id === emp.position_id),
       profiles: profiles?.find(p => p.user_id === emp.user_id),
     }));
 
@@ -299,7 +333,7 @@ export function EmployeesPage() {
       const { data: appProfiles } = await supabase
         .from('profiles')
         .select('user_id, first_name, last_name, email')
-        .in('user_id', applicantUserIds.length ? applicantUserIds : ['none']);
+        .in('user_id', applicantUserIds.length ? applicantUserIds : ['00000000-0000-0000-0000-000000000000']);
 
       const hiredWithDetails = notYetEmployees.map(app => {
         const appHired = hiredApps?.find(h => h.applicant_id === app.id);
@@ -322,12 +356,6 @@ export function EmployeesPage() {
   useEffect(() => {
     void fetchData();
   }, [fetchData]);
-
-  const generateEmployeeNumber = () => {
-    const year = new Date().getFullYear();
-    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    return `EMP-${year}-${random}`;
-  };
 
   const getEmployeeTypeFromPosition = (positionTitle?: string): EmployeeType => {
     if (!positionTitle) return 'staff';
@@ -391,99 +419,37 @@ export function EmployeesPage() {
 
     setIsSubmitting(true);
 
-    // Create employee record
-    const { data: newEmployee, error: empError } = await supabase
-      .from('employees')
-      .insert({
-        user_id: applicant.user_id,
-        employee_number: generateEmployeeNumber(),
-        employee_type: formData.employee_type,
-        department_id: position?.department_id || formData.department_id || null,
-        position_id: position?.id || formData.position_id || null,
-        hire_date: formData.hire_date,
-        employment_status: 'probation',
-      })
-      .select()
-      .single();
+    const { data: conversionData, error: conversionError } = await supabase.rpc(
+      'convert_hired_applicant_to_employee',
+      {
+        _applicant_id: applicant.id,
+        _applicant_user_id: applicant.user_id,
+        _employee_type: formData.employee_type,
+        _department_id: (position?.department_id || formData.department_id || null) as string | null,
+        _position_id: (position?.id || formData.position_id || null) as string | null,
+        _hire_date: formData.hire_date,
+        _contract_type: formData.contract_type,
+        _salary: formData.salary ? parseFloat(formData.salary) : null,
+      }
+    );
 
-    if (empError) {
-      toast.error('Failed to create employee record');
+    const conversionResult = (conversionData ?? null) as {
+      ok?: boolean;
+      employee_id?: string;
+      message?: string;
+    } | null;
+
+    if (conversionError || !conversionResult?.ok || !conversionResult.employee_id) {
+      toast.error(
+        conversionError?.message ||
+          conversionResult?.message ||
+          'Failed to create employee record'
+      );
       setIsSubmitting(false);
       return;
     }
 
-    // Create initial contract
-    if (formData.salary) {
-      await supabase.from('employment_contracts').insert({
-        employee_id: newEmployee.id,
-        contract_type: formData.contract_type,
-        start_date: formData.hire_date,
-        salary: parseFloat(formData.salary),
-        is_current: true,
-      });
-    }
-
-    // Migrate applicant documents to employee documents
-    const { data: applicantDocs, error: docsFetchError } = await supabase
-      .from('applicant_documents')
-      .select('*')
-      .eq('applicant_id', applicant.id);
-
-    if (!docsFetchError && applicantDocs && applicantDocs.length > 0) {
-      const employeeDocuments = applicantDocs.map((doc: {
-        document_name: string;
-        document_url: string;
-        document_type: string;
-      }) => ({
-        employee_id: newEmployee.id,
-        document_name: doc.document_name,
-        document_url: doc.document_url,
-        document_type: doc.document_type,
-        uploaded_by: applicant.user_id,
-      }));
-
-      const { error: insertDocsError } = await supabase
-        .from('employee_documents')
-        .insert(employeeDocuments);
-
-      if (insertDocsError) {
-        console.error('Failed to migrate documents:', insertDocsError);
-        toast.error('Employee created but some documents failed to migrate');
-      }
-    }
-
-    // Update user role to employee
-    // First check if they already have a role, then update or insert
-    const { data: existingRole } = await supabase
-      .from('user_roles')
-      .select('id')
-      .eq('user_id', applicant.user_id)
-      .single();
-
-    if (existingRole) {
-      // Update existing role
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .update({ role: 'employee' })
-        .eq('user_id', applicant.user_id);
-      
-      if (roleError) {
-        console.error('Failed to update role:', roleError);
-        toast.error('Employee created but role update failed. Please update role manually.');
-      }
-    } else {
-      // Insert new role
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .insert({ user_id: applicant.user_id, role: 'employee' });
-      
-      if (roleError) {
-        console.error('Failed to insert role:', roleError);
-        toast.error('Employee created but role assignment failed. Please assign role manually.');
-      }
-    }
-
-    const syncResult = await syncEmployeeEverywhere(newEmployee.id, 'employee_created');
+    const syncResult = await syncEmployeeEverywhere(conversionResult.employee_id, 'employee_created');
 
     toast.success('Applicant converted to employee successfully!');
 
@@ -508,6 +474,7 @@ export function EmployeesPage() {
 
   const resetForm = () => {
     setFormData({
+      user_id: '',
       employee_number: '',
       employee_type: 'staff',
       department_id: '',
@@ -516,6 +483,51 @@ export function EmployeesPage() {
       contract_type: 'full_time',
       salary: '',
     });
+  };
+
+  const handleCreateEmployee = async () => {
+    if (!formData.user_id || !formData.employee_number.trim()) {
+      toast.error('User and employee number are required.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    const { data: created, error } = await supabase
+      .from('employees')
+      .insert([
+        {
+          user_id: formData.user_id,
+          employee_number: formData.employee_number.trim(),
+          employee_type: formData.employee_type,
+          department_id: formData.department_id || null,
+          position_id: formData.position_id || null,
+          hire_date: formData.hire_date,
+          employment_status: 'active',
+        },
+      ])
+      .select('id')
+      .single();
+
+    if (error) {
+      toast.error(`Failed to add employee: ${error.message}`);
+      setIsSubmitting(false);
+      return;
+    }
+
+    const employeeId = (created as { id?: string } | null)?.id;
+    toast.success('Employee added successfully.');
+
+    if (employeeId) {
+      const syncResult = await syncEmployeeEverywhere(employeeId, 'employee_created');
+      if (syncResult.error) {
+        toast.error(`Employee created, but sync failed: ${syncResult.error}`);
+      }
+    }
+
+    setIsCreateOpen(false);
+    resetForm();
+    await fetchData();
+    setIsSubmitting(false);
   };
 
   const openViewDialog = (emp: Employee) => {
@@ -693,11 +705,109 @@ export function EmployeesPage() {
                 <DialogTitle>Add New Employee</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  To add a new employee, first have them register as an applicant, apply for a position, and then hire them through the recruitment process.
-                </p>
-                <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
-                  Understood
+                <div className="space-y-2">
+                  <Label>User Account</Label>
+                  <Select
+                    value={formData.user_id}
+                    onValueChange={(v) => setFormData({ ...formData, user_id: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select existing user profile" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {candidateUsers.map((candidate) => (
+                        <SelectItem key={candidate.user_id} value={candidate.user_id}>
+                          {candidate.first_name} {candidate.last_name} - {candidate.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Employee Number</Label>
+                  <Input
+                    value={formData.employee_number}
+                    onChange={(e) => setFormData({ ...formData, employee_number: e.target.value })}
+                    placeholder="e.g., EMP-2026-001"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Employee Type</Label>
+                    <Select
+                      value={formData.employee_type}
+                      onValueChange={(v) => setFormData({ ...formData, employee_type: v as EmployeeType })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(EMPLOYEE_TYPE_LABELS).map(([value, label]) => (
+                          <SelectItem key={value} value={value}>{label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Hire Date</Label>
+                    <Input
+                      type="date"
+                      value={formData.hire_date}
+                      onChange={(e) => setFormData({ ...formData, hire_date: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Department</Label>
+                    <Select
+                      value={formData.department_id}
+                      onValueChange={(v) => setFormData({ ...formData, department_id: v, position_id: '' })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select department" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {departments.map((dept) => (
+                          <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Position</Label>
+                    <Select
+                      value={formData.position_id}
+                      onValueChange={(v) => setFormData({ ...formData, position_id: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select position" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {filteredPositions.map((pos) => (
+                          <SelectItem key={pos.id} value={pos.id}>{pos.title}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={handleCreateEmployee}
+                  disabled={isSubmitting || candidateUsers.length === 0}
+                  className="w-full btn-primary-gradient"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Creating Employee...
+                    </>
+                  ) : (
+                    'Create Employee'
+                  )}
                 </Button>
               </div>
             </DialogContent>

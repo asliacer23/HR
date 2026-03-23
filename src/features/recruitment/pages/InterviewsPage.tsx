@@ -84,43 +84,48 @@ export function InterviewsPage() {
       // Fetch job applications
       const { data: applicationsData } = await supabase
         .from('job_applications')
-        .select('id, applicant_id, job_posting_id');
+        .select('*');
 
-      // Get unique applicant IDs and fetch applicants
-      const applicantIds = [...new Set((applicationsData || []).map(a => a.applicant_id))];
-      let applicantsData: any[] = [];
-      if (applicantIds.length > 0) {
-        const { data: appData } = await supabase
-          .from('applicants')
-          .select('id, user_id')
-          .in('id', applicantIds);
-        applicantsData = appData || [];
-      }
+      // Get unique IDs for related data
+      const applicantIds = [...new Set((applicationsData || []).map(a => a.applicant_id))].filter(Boolean);
+      const jobPostingIds = [...new Set((applicationsData || []).map(a => a.job_posting_id))].filter(Boolean);
+
+      const [
+        { data: applicantsDataResult },
+        { data: jobPostingsDataResult },
+        { data: positionsDataResult }
+      ] = await Promise.all([
+        supabase.from('applicants').select('*').in('id', applicantIds),
+        supabase.from('job_postings').select('*').in('id', jobPostingIds),
+        supabase.from('positions').select('id, title')
+      ]);
 
       // Fetch profiles
+      const userIds = (applicantsDataResult || []).map(a => a.user_id).filter(Boolean);
       const { data: profilesData } = await supabase
         .from('profiles')
-        .select('user_id, first_name, last_name');
-
-      // Fetch job postings
-      const { data: jobPostingsData } = await supabase
-        .from('job_postings')
-        .select('id, title');
+        .select('user_id, first_name, last_name')
+        .in('user_id', userIds.length ? userIds : ['00000000-0000-0000-0000-000000000000']);
 
       // Combine the data
       const interviewsWithDetails = (interviewsData || []).map(interview => {
         const application = (applicationsData || []).find(a => a.id === interview.application_id);
-        const applicant = (applicantsData || []).find(a => a.id === application?.applicant_id);
+        const applicant = (applicantsDataResult || []).find(a => a.id === application?.applicant_id);
         const profile = (profilesData || []).find(p => p.user_id === applicant?.user_id);
-        const jobPosting = (jobPostingsData || []).find(j => j.id === application?.job_posting_id);
+        const jobPosting = (jobPostingsDataResult || []).find(j => j.id === application?.job_posting_id);
+        const position = (positionsDataResult || []).find(p => p.id === jobPosting?.position_id);
 
         return {
           ...interview,
           job_applications: {
             applicants: {
+              ...applicant,
               profiles: profile,
             },
-            job_postings: jobPosting,
+            job_postings: {
+              ...jobPosting,
+              positions: position,
+            },
           },
         };
       });

@@ -22,13 +22,14 @@ import { EmployeeOnboardingPage } from "@/features/hr/pages/EmployeeOnboardingPa
 import { TrainingPage } from "@/features/hr/pages/TrainingPage";
 import { EmployeeTrainingPage } from "@/features/hr/pages/EmployeeTrainingPage";
 import { PerformancePage } from "@/features/hr/pages/PerformancePage";
+import { WorkforceDirectoryPage } from "@/features/hr/pages/WorkforceDirectoryPage";
 import { PayrollPage } from "@/features/payroll/pages/PayrollPage";
 import { BenefitsPage } from "@/features/payroll/pages/BenefitsPage";
 import { EmployeeBenefitsPage } from "@/features/payroll/pages/EmployeeBenefitsPage";
 import { PayrollRecordsPage } from "@/features/payroll/pages/PayrollRecordsPage";
 import { ReportsPage } from "@/features/reports/pages/ReportsPage";
 import { AuditLogsPage } from "@/features/admin/pages/AuditLogsPage";
-import { RegistrarInstructorTestPage } from "@/features/integration/pages/RegistrarInstructorTestPage";
+import { EmployeeRequestsPage } from "@/features/integration/pages/EmployeeRequestsPage";
 import { MyProfilePage } from "@/features/employee-self/pages/MyProfilePage";
 import { MyPayrollPage } from "@/features/employee-self/pages/MyPayrollPage";
 import { MyPayrollRecordsPage } from "@/features/employee-self/pages/MyPayrollRecordsPage";
@@ -83,12 +84,13 @@ const App = () => (
               <Route path="/employees/documents" element={<EmployeeDocumentsPage />} />
 
               {/* HR Operations Routes */}
+              <Route path="/hr/workforce-directory" element={<WorkforceDirectoryPage />} />
               <Route path="/hr/onboarding" element={<OnboardingPage />} />
               <Route path="/hr/employee-onboarding" element={<EmployeeOnboardingPage />} />
               <Route path="/hr/training" element={<TrainingPage />} />
               <Route path="/hr/employee-training" element={<EmployeeTrainingPage />} />
               <Route path="/hr/performance" element={<PerformancePage />} />
-              <Route path="/hr/registrar-instructor-test" element={<RegistrarInstructorTestPage />} />
+              <Route path="/hr/employee-requests" element={<EmployeeRequestsPage />} />
 
               {/* Payroll Routes */}
               <Route path="/payroll" element={<PayrollPage />} />
