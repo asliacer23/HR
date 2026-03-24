@@ -8,6 +8,9 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    fs: {
+      allow: [path.resolve(__dirname, "..")],
+    },
     proxy: {
       "/api/integrations/hr-staff": {
         target: "http://localhost:5713",
@@ -23,6 +26,7 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@shared": path.resolve(__dirname, "../shared"),
     },
   },
 }));
