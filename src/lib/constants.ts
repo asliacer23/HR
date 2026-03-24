@@ -17,7 +17,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
 export const STATUS_LABELS: Record<ApplicationStatus, string> = {
   applied: 'Applied',
   interview: 'Interview',
-  hired: 'Accepted',
+  hired: 'Hired',
   rejected: 'Rejected',
 };
 

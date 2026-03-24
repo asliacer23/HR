@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -58,16 +58,10 @@ interface Position {
 }
 
 interface HiredApplicant {
-  /** job_application.id — unique per row, used as the select value */
   id: string;
-  /** applicants.id — stored as employee_note to prevent re-conversion */
-  applicant_id: string;
-  /** Effective user_id to use when creating the employee record. */
-  effective_user_id: string;
-  is_manual: boolean;
+  user_id: string;
   manual_name?: string | null;
   display_name?: string | null;
-  alreadyEmployee?: boolean;
   profiles?: {
     first_name: string;
     last_name: string;
@@ -162,7 +156,6 @@ export function EmployeesPage() {
 
   const [formData, setFormData] = useState({
     user_id: '',
-    source_applicant_id: '',
     employee_number: '',
     employee_type: 'staff' as EmployeeType,
     department_id: '',
@@ -342,17 +335,16 @@ export function EmployeesPage() {
       .order('title');
     setPositions(posData || []);
 
-    // Fetch all hired job applications to populate the Accepted List dropdown.
-    const { data: hiredApps, error: hiredAppsError } = await supabase
+    // Fetch hired applicants not yet converted to employees
+    const existingIds = Array.from(existingEmployeeUserIdSet);
+
+    // Get hired applications with full job posting details
+    const { data: hiredApps } = await supabase
       .from('job_applications')
       .select(`
         id,
         applicant_id,
         notes,
-        applicants (
-          id,
-          user_id
-        ),
         job_postings (
           title,
           id,
@@ -363,103 +355,44 @@ export function EmployeesPage() {
       `)
       .eq('status', 'hired');
 
-    if (hiredAppsError) {
-      toast.error(`Failed to load hired applicants: ${hiredAppsError.message}`);
-      setHiredApplicants([]);
-      setIsLoading(false);
-      return;
-    }
+    const hiredApplicantIds = (hiredApps || []).map(a => a.applicant_id);
 
-    const hiredApplicationRows = (hiredApps || []) as Array<{
-      id: string;
-      applicant_id: string | null;
-      notes: string | null;
-      applicants: { id: string; user_id: string | null } | null;
-      job_postings: {
-        id: string;
-        title: string;
-        positions: { id: string; title: string; department_id: string | null } | null;
-        salary_range_min: number | null;
-        salary_range_max: number | null;
-      } | null;
-    }>;
+    if (hiredApplicantIds.length > 0) {
+      const { data: applicantsData } = await supabase
+        .from('applicants')
+        .select('id, user_id')
+        .in('id', hiredApplicantIds);
 
-    if (hiredApplicationRows.length > 0) {
-      // For non-manual applicants we can look up their profile name.
-      const realUserIds = Array.from(
-        new Set(
-          hiredApplicationRows
-            .filter((row) => {
-              const notes = row.notes ?? '';
-              return !notes.startsWith('HR_MANUAL_APPLICANT:');
-            })
-            .map((row) => row.applicants?.user_id)
-            .filter((id): id is string => Boolean(id))
-        )
-      );
-
+      // Get profiles
+      const applicantUserIds = (applicantsData || []).map(a => a.user_id);
       const { data: appProfiles } = await supabase
         .from('profiles')
         .select('user_id, first_name, last_name, email')
-        .in('user_id', realUserIds.length ? realUserIds : ['00000000-0000-0000-0000-000000000000']);
+        .in('user_id', applicantUserIds.length ? applicantUserIds : ['00000000-0000-0000-0000-000000000000']);
 
-      // Fetch converted applicant IDs from source_applicant_id column.
-      const { data: convertedRows } = await supabase
-        .from('employees')
-        .select('source_applicant_id');
-
-      const convertedApplicantIds = new Set(
-        (convertedRows || [])
-          .map((e: { source_applicant_id?: string | null }) => e.source_applicant_id)
-          .filter((id): id is string => Boolean(id))
-      );
-
-      // For real-user applicants also check user_id to catch older conversions.
-      const existingUserIdSet = new Set(Array.from(existingEmployeeUserIdSet));
-
-      const hiredWithDetails = hiredApplicationRows.map((row) => {
-        const applicant = row.applicants;
-        const applicantId = applicant?.id ?? row.applicant_id ?? '';
-        const realUserId = applicant?.user_id ?? '';
-        const isManual =
-          typeof row.notes === 'string' && row.notes.startsWith('HR_MANUAL_APPLICANT:');
-        const manualName = isManual
-          ? (row.notes as string).replace('HR_MANUAL_APPLICANT:', '').trim()
+      const hiredWithDetails = (applicantsData || []).map(app => {
+        const appHired = hiredApps?.find(h => h.applicant_id === app.id);
+        const manualName =
+          typeof appHired?.notes === 'string' && appHired.notes.startsWith('HR_MANUAL_APPLICANT:')
+            ? appHired.notes.replace('HR_MANUAL_APPLICANT:', '').trim()
+            : null;
+        const profileName = appProfiles?.find(p => p.user_id === app.user_id)
+          ? `${appProfiles?.find(p => p.user_id === app.user_id)?.first_name || ''} ${appProfiles?.find(p => p.user_id === app.user_id)?.last_name || ''}`.trim()
           : null;
-        const applicantProfile = !isManual
-          ? appProfiles?.find((p) => p.user_id === realUserId)
-          : undefined;
-        const profileName = applicantProfile
-          ? `${applicantProfile.first_name || ''} ${applicantProfile.last_name || ''}`.trim()
-          : null;
-
-        // Already-employee detection:
-        //  1. source_applicant_id column match (most accurate)
-        //  2. user_id match fallback (handles projects where user_id is still unique)
-        const alreadyEmployee =
-          (Boolean(applicantId) && convertedApplicantIds.has(applicantId)) ||
-          existingUserIdSet.has(realUserId);
-
-        const displayName = manualName || profileName || 'Accepted Applicant';
-
-        // Keep the source user_id from applicants to satisfy employees.user_id
-        // foreign-key constraint to auth.users.
-        const effectiveUserId = realUserId;
-
         return {
-          id: row.id,            // job_application.id — unique per row
-          applicant_id: applicantId,
-          effective_user_id: effectiveUserId,
-          is_manual: isManual,
+          ...app,
           manual_name: manualName,
-          display_name: alreadyEmployee ? `${displayName} (Already Employee)` : displayName,
-          alreadyEmployee,
-          profiles: applicantProfile,
-          job_applications: row.job_postings ? [{ job_postings: row.job_postings }] : [],
+          display_name: manualName || profileName || 'Accepted Applicant',
+          profiles: appProfiles?.find(p => p.user_id === app.user_id),
+          job_applications: appHired ? [{ job_postings: appHired.job_postings }] : [],
         };
       });
 
-      setHiredApplicants(hiredWithDetails);
+      // Only show accepted applicants that are not yet employees.
+      const availableAcceptedApplicants = hiredWithDetails.filter(
+        (applicant) => !existingIds.includes(applicant.user_id)
+      );
+      setHiredApplicants(availableAcceptedApplicants);
     } else {
       setHiredApplicants([]);
     }
@@ -523,8 +456,7 @@ export function EmployeesPage() {
     // Update form with auto-filled data
     setFormData(prev => ({
       ...prev,
-      user_id: applicant.effective_user_id,
-      source_applicant_id: applicant.id,
+      user_id: applicant.user_id,
       employee_type: detectedType,
       department_id: position?.department_id || prev.department_id,
       position_id: position?.id || prev.position_id,
@@ -532,10 +464,21 @@ export function EmployeesPage() {
     }));
   };
 
+  const acceptedApplicantByUserId = useMemo(() => {
+    const map = new Map<string, HiredApplicant>();
+    hiredApplicants.forEach((applicant) => {
+      if (applicant.user_id) {
+        map.set(applicant.user_id, applicant);
+      }
+    });
+    return map;
+  }, [hiredApplicants]);
+
   const handleUserAccountSelect = (applicantId: string) => {
     setSelectedAcceptedApplicantId(applicantId);
     const hiredApplicant = hiredApplicants.find((entry) => entry.id === applicantId);
     if (!hiredApplicant) return;
+    const userId = hiredApplicant.user_id;
 
     const position = hiredApplicant.job_applications?.[0]?.job_postings?.positions;
     const jobPosting = hiredApplicant.job_applications?.[0]?.job_postings;
@@ -552,12 +495,7 @@ export function EmployeesPage() {
 
     setFormData((prev) => ({
       ...prev,
-      // Use effective_user_id: for manual applicants this is a fresh UUID
-      // so it never conflicts with an existing employee's real user_id.
-      user_id: hiredApplicant.effective_user_id,
-      // Store job_application.id so handleCreateEmployee can write the
-      // employee_notes tag and check for duplicates without a schema change.
-      source_applicant_id: hiredApplicant.id,
+      user_id: userId,
       employee_type: detectedType,
       department_id: position?.department_id || prev.department_id,
       position_id: position?.id || prev.position_id,
@@ -635,7 +573,6 @@ export function EmployeesPage() {
     setSelectedAcceptedApplicantId('');
     setFormData({
       user_id: '',
-      source_applicant_id: '',
       employee_number: nextEmployeeNumber,
       employee_type: 'staff',
       department_id: '',
@@ -660,48 +597,30 @@ export function EmployeesPage() {
   }, [isCreateOpen, fetchData]);
 
   const handleCreateEmployee = async () => {
-    if (!formData.source_applicant_id || !formData.employee_number.trim()) {
-      toast.error('Please select an accepted applicant and provide an employee number.');
+    if (!formData.user_id || !formData.employee_number.trim()) {
+      toast.error('User and employee number are required.');
       return;
     }
 
     setIsSubmitting(true);
+    // Safety check: prevent duplicate employee per accepted applicant/user.
+    const { data: existingEmployee, error: existingEmployeeError } = await supabase
+      .from('employees')
+      .select('id')
+      .eq('user_id', formData.user_id)
+      .maybeSingle();
 
-    // source_applicant_id is the applicants.id stored on the HiredApplicant entry.
-    const selectedEntry = hiredApplicants.find((a) => a.id === formData.source_applicant_id);
-    const applicantRecordId = selectedEntry?.applicant_id ?? '';
-
-    // Duplicate check: the source_applicant_id column (added by migration) lets us
-    // detect re-conversions regardless of shared user_ids.
-    if (applicantRecordId) {
-      const { data: existingByApplicant } = await supabase
-        .from('employees')
-        .select('id')
-        .eq('source_applicant_id', applicantRecordId)
-        .maybeSingle();
-
-      if (existingByApplicant?.id) {
-        toast.error('This applicant has already been added as an employee.');
-        setIsSubmitting(false);
-        await fetchData();
-        return;
-      }
+    if (existingEmployeeError) {
+      toast.error(`Failed to validate employee before save: ${existingEmployeeError.message}`);
+      setIsSubmitting(false);
+      return;
     }
 
-    // Guard against user_id uniqueness conflicts in schemas that still enforce it.
-    if (formData.user_id) {
-      const { data: existingByUser } = await supabase
-        .from('employees')
-        .select('id')
-        .eq('user_id', formData.user_id)
-        .maybeSingle();
-
-      if (existingByUser?.id) {
-        toast.error('This applicant is already registered as an employee.');
-        setIsSubmitting(false);
-        await fetchData();
-        return;
-      }
+    if (existingEmployee?.id) {
+      toast.error('This accepted applicant is already in Employee List.');
+      setIsSubmitting(false);
+      await fetchData();
+      return;
     }
 
     const { data: created, error } = await supabase
@@ -714,8 +633,7 @@ export function EmployeesPage() {
           department_id: formData.department_id || null,
           position_id: formData.position_id || null,
           hire_date: formData.hire_date,
-          employment_status: 'probation',
-          source_applicant_id: applicantRecordId || null,
+          employment_status: 'active',
         },
       ])
       .select('id')
@@ -921,21 +839,16 @@ export function EmployeesPage() {
                     <SelectContent>
                       {hiredApplicants.length > 0 ? (
                         hiredApplicants.map((applicant) => (
-                          <SelectItem
-                            key={applicant.id}
-                            value={applicant.id}
-                            disabled={applicant.alreadyEmployee}
-                            className={applicant.alreadyEmployee ? 'opacity-40 line-through' : ''}
-                          >
+                          <SelectItem key={applicant.id} value={applicant.id}>
                             {applicant.display_name || 'Accepted Applicant'}
                             {applicant.job_applications?.[0]?.job_postings?.title
-                              ? ` — ${applicant.job_applications[0].job_postings.title}`
+                              ? ` - ${applicant.job_applications[0].job_postings.title}`
                               : ''}
                           </SelectItem>
                         ))
                       ) : (
                         <SelectItem value="__no_accepted__" disabled>
-                          No hired applicants available
+                          No accepted applicants available
                         </SelectItem>
                       )}
                     </SelectContent>
@@ -1015,7 +928,7 @@ export function EmployeesPage() {
 
                 <Button
                   onClick={handleCreateEmployee}
-                  disabled={isSubmitting || !formData.user_id}
+                  disabled={isSubmitting || hiredApplicants.length === 0 || !formData.user_id}
                   className="w-full btn-primary-gradient"
                 >
                   {isSubmitting ? (
