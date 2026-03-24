@@ -5,10 +5,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Search, Eye, UserCheck, Calendar, X, Plus, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { Search, Eye, UserCheck, Calendar, X, Plus, Loader2, Trash2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { STATUS_LABELS, ApplicationStatus } from '@/lib/constants';
 import { FileViewer } from '@/features/shared/components/FileViewer';
-import { FileUpload } from '@/features/shared/components/FileUpload';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import {
   Dialog,
@@ -71,7 +70,7 @@ export function ApplicantsPage() {
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [isAddApplicantOpen, setIsAddApplicantOpen] = useState(false);
   const [isCreatingApplicant, setIsCreatingApplicant] = useState(false);
-  const [newResume, setNewResume] = useState<{ url: string; name: string } | null>(null);
+  const [editableStatus, setEditableStatus] = useState<ApplicationStatus>('applied');
   const [applicantDocuments, setApplicantDocuments] = useState<Record<string, any[]>>({});
   
   // Pagination State
@@ -90,6 +89,7 @@ export function ApplicantsPage() {
     years_experience: '',
     interview_date: '',
   });
+  const acceptedApplications = applications.filter((app) => app.status === 'hired');
 
   useEffect(() => {
     fetchApplications();
@@ -276,6 +276,7 @@ export function ApplicantsPage() {
 
   const handleViewDetails = (app: ApplicationWithDetails) => {
     setSelectedApp(app);
+    setEditableStatus(app.status);
     setIsDetailsOpen(true);
   };
 
@@ -297,6 +298,36 @@ export function ApplicantsPage() {
       fetchApplications();
       setIsDetailsOpen(false);
     }
+  };
+
+  const handleSaveStatus = async () => {
+    if (!selectedApp) return;
+    await handleUpdateStatus(editableStatus);
+  };
+
+  const handleDeleteApplication = async () => {
+    if (!selectedApp) return;
+
+    const applicantName = selectedApp.manual_applicant_name
+      || `${selectedApp.applicants.profiles?.first_name || ''} ${selectedApp.applicants.profiles?.last_name || ''}`.trim()
+      || 'this applicant';
+    const confirmed = window.confirm(`Delete application for ${applicantName}? This cannot be undone.`);
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from('job_applications')
+      .delete()
+      .eq('id', selectedApp.id);
+
+    if (error) {
+      toast.error(error.message || 'Failed to delete application');
+      return;
+    }
+
+    toast.success('Application deleted successfully');
+    setIsDetailsOpen(false);
+    setSelectedApp(null);
+    await fetchApplications();
   };
 
   const handleScheduleInterview = async () => {
@@ -339,7 +370,6 @@ export function ApplicantsPage() {
       years_experience: '',
       interview_date: '',
     });
-    setNewResume(null);
   };
 
   const handleCreateApplicant = async () => {
@@ -347,9 +377,8 @@ export function ApplicantsPage() {
       toast.error('Please complete all required fields');
       return;
     }
-
-    if (!newResume?.url) {
-      toast.error('Please upload a resume file first');
+    if (!user?.id) {
+      toast.error('You must be logged in to add an applicant');
       return;
     }
 
@@ -361,24 +390,53 @@ export function ApplicantsPage() {
     setIsCreatingApplicant(true);
 
     try {
-      // Manual HR-created applicants should not depend on an existing user account.
-      const syntheticUserId = crypto.randomUUID();
-      const { data: createdApplicant, error: createApplicantError } = await supabase
+      // applicants.user_id is unique. Reuse the current user's applicant row
+      // when it already exists; otherwise create a new applicant row.
+      let applicantId = '';
+      const { data: existingApplicant, error: existingApplicantError } = await supabase
         .from('applicants')
-        .insert({
-          user_id: syntheticUserId,
-          years_experience: yearsExperience,
-          resume_url: newResume.url,
-        })
         .select('id')
-        .single();
+        .eq('user_id', user.id)
+        .maybeSingle();
 
-      if (createApplicantError || !createdApplicant) {
-        toast.error(createApplicantError?.message || 'Failed to create applicant record');
+      if (existingApplicantError) {
+        toast.error(existingApplicantError.message || 'Failed to validate applicant record');
         return;
       }
 
-      const applicantId = createdApplicant.id;
+      if (existingApplicant?.id) {
+        applicantId = existingApplicant.id;
+        // Keep applicant profile current based on latest form input.
+        const { error: updateApplicantError } = await supabase
+          .from('applicants')
+          .update({
+            years_experience: yearsExperience,
+          })
+          .eq('id', applicantId);
+
+        if (updateApplicantError) {
+          toast.error(updateApplicantError.message || 'Failed to update applicant record');
+          return;
+        }
+      } else {
+        const { data: createdApplicant, error: createApplicantError } = await supabase
+          .from('applicants')
+          .insert({
+            // applicants.user_id has FK + unique constraint
+            user_id: user.id,
+            years_experience: yearsExperience,
+            resume_url: null,
+          })
+          .select('id')
+          .single();
+
+        if (createApplicantError || !createdApplicant) {
+          toast.error(createApplicantError?.message || 'Failed to create applicant record');
+          return;
+        }
+
+        applicantId = createdApplicant.id;
+      }
 
       const { data: createdApplication, error: applicationError } = await supabase
         .from('job_applications')
@@ -394,17 +452,6 @@ export function ApplicantsPage() {
       if (applicationError || !createdApplication) {
         toast.error(applicationError?.message || 'Failed to create job application');
         return;
-      }
-
-      const { error: documentError } = await supabase.from('applicant_documents').insert({
-        applicant_id: applicantId,
-        document_name: newResume.name || 'Resume',
-        document_url: newResume.url,
-        document_type: 'resume',
-      });
-
-      if (documentError) {
-        toast.error('Applicant created, but failed to save resume document record');
       }
 
       const interviewDate = new Date(newApplicantData.interview_date);
@@ -485,7 +532,7 @@ export function ApplicantsPage() {
             <SelectItem value="all">All Status</SelectItem>
             <SelectItem value="applied">Applied</SelectItem>
             <SelectItem value="interview">Interview</SelectItem>
-            <SelectItem value="hired">Hired</SelectItem>
+            <SelectItem value="hired">Accepted</SelectItem>
             <SelectItem value="rejected">Rejected</SelectItem>
           </SelectContent>
         </Select>
@@ -498,6 +545,68 @@ export function ApplicantsPage() {
           <Plus className="mr-2 h-4 w-4" />
           Add New Applicant
         </Button>
+      </div>
+
+      <div className="card-elevated overflow-hidden">
+        <div className="p-4 border-b flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold">Accepted Applicants</h3>
+            <p className="text-sm text-muted-foreground">Applicants marked as hired and ready for employee onboarding</p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              window.location.href = '/employees';
+            }}
+          >
+            Proceed to Employee List
+          </Button>
+        </div>
+
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Applicant</th>
+              <th>Position Applied</th>
+              <th>Experience</th>
+              <th>Accepted</th>
+              <th className="w-24">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {acceptedApplications.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="text-center py-6 text-muted-foreground">
+                  No accepted applicants yet
+                </td>
+              </tr>
+            ) : (
+              acceptedApplications.map((app) => (
+                <tr key={`accepted-${app.id}`}>
+                  <td>
+                    <div>
+                      <p className="font-medium">
+                        {app.manual_applicant_name || `${app.applicants.profiles?.first_name || ''} ${app.applicants.profiles?.last_name || ''}`.trim() || 'Applicant'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {app.applicants.profiles?.email}
+                      </p>
+                    </div>
+                  </td>
+                  <td>{app.job_postings.title}</td>
+                  <td>{app.applicants.years_experience} years</td>
+                  <td>{new Date(app.applied_at).toLocaleDateString()}</td>
+                  <td>
+                    <Button variant="ghost" size="icon" onClick={() => handleViewDetails(app)}>
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
 
       <div className="card-elevated overflow-hidden">
@@ -704,48 +813,57 @@ export function ApplicantsPage() {
               </div>
 
               {/* Status & Actions */}
-              <div className="flex items-center justify-between pt-4 border-t">
-                <Badge className={getStatusColor(selectedApp.status)}>
-                  Current: {STATUS_LABELS[selectedApp.status]}
-                </Badge>
+              <div className="space-y-3 pt-4 border-t">
+                <div className="flex items-center justify-between">
+                  <Badge className={getStatusColor(selectedApp.status)}>
+                    Current: {STATUS_LABELS[selectedApp.status]}
+                  </Badge>
+                </div>
 
-                <div className="flex gap-2">
-                  {selectedApp.status === 'applied' && (
-                    <>
-                      <Button
-                        variant="outline"
-                        onClick={() => setIsScheduleOpen(true)}
-                      >
-                        <Calendar className="mr-2 h-4 w-4" />
-                        Schedule Interview
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        onClick={() => handleUpdateStatus('rejected')}
-                      >
-                        <X className="mr-2 h-4 w-4" />
-                        Reject
-                      </Button>
-                    </>
-                  )}
-                  {selectedApp.status === 'interview' && (
-                    <>
-                      <Button
-                        className="btn-primary-gradient"
-                        onClick={() => handleUpdateStatus('hired')}
-                      >
-                        <UserCheck className="mr-2 h-4 w-4" />
-                        Hire Applicant
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        onClick={() => handleUpdateStatus('rejected')}
-                      >
-                        <X className="mr-2 h-4 w-4" />
-                        Reject
-                      </Button>
-                    </>
-                  )}
+                <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto] gap-2 items-end">
+                  <div className="space-y-2">
+                    <Label>Update Application Status</Label>
+                    <Select
+                      value={editableStatus}
+                      onValueChange={(v) => setEditableStatus(v as ApplicationStatus)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="applied">Applied</SelectItem>
+                        <SelectItem value="interview">Interview</SelectItem>
+                        <SelectItem value="hired">Accepted</SelectItem>
+                        <SelectItem value="rejected">Rejected</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsScheduleOpen(true)}
+                    disabled={editableStatus !== 'applied'}
+                  >
+                    <Calendar className="mr-2 h-4 w-4" />
+                    Schedule
+                  </Button>
+
+                  <Button
+                    className="btn-primary-gradient"
+                    onClick={handleSaveStatus}
+                    disabled={editableStatus === selectedApp.status}
+                  >
+                    <UserCheck className="mr-2 h-4 w-4" />
+                    Save Status
+                  </Button>
+
+                  <Button
+                    variant="destructive"
+                    onClick={handleDeleteApplication}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
+                  </Button>
                 </div>
               </div>
             </div>
@@ -850,27 +968,6 @@ export function ApplicantsPage() {
                 value={newApplicantData.years_experience}
                 onChange={(e) => setNewApplicantData((prev) => ({ ...prev, years_experience: e.target.value }))}
               />
-            </div>
-
-            <div className="space-y-3">
-              <Label>Resume (upload file) *</Label>
-              {newResume ? (
-                <FileViewer
-                  url={newResume.url}
-                  fileName={newResume.name}
-                  showDelete
-                  onDelete={() => setNewResume(null)}
-                />
-              ) : (
-                user && (
-                  <FileUpload
-                    userId={user.id}
-                    folder="resumes"
-                    accept=".pdf,.doc,.docx"
-                    onUploadComplete={(url, fileName) => setNewResume({ url, name: fileName })}
-                  />
-                )
-              )}
             </div>
 
             <div className="space-y-2">
